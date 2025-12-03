@@ -53,74 +53,21 @@ import {
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
-import { useEffect, useRef, useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useEffect, useRef, useState } from "react";
+import { useFormState, useFormStatus } from 'react-dom';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+// --- Components for Upload ---
 
-const datasets: Dataset[] = [
-  {
-    id: "ds-001",
-    name: "EURUSD_H1_2023",
-    status: "Labeled",
-    itemCount: 17800,
-    createdAt: "2023-10-01",
-  },
-  {
-    id: "ds-002",
-    name: "BTCUSD_M5_2024_Q1",
-    status: "Processing",
-    itemCount: 89500,
-    createdAt: "2024-03-15",
-  },
-  {
-    id: "ds-003",
-    name: "SPX500_Tick_2024_05",
-    status: "Raw",
-    itemCount: 2450230,
-    createdAt: "2024-05-20",
-  },
-  {
-    id: "ds-004",
-    name: "NASDAQ_Futures_H4",
-    status: "Labeled",
-    itemCount: 9800,
-    createdAt: "2022-11-30",
-  },
-];
+type UploadState = {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+  newDataset?: Dataset | null;
+}
 
-// Dữ liệu giả cho biểu đồ, mỗi key tương ứng với một id bộ dữ liệu
-const mockChartData: { [key: string]: { time: string, value: number }[] } = {
-  "ds-001": [
-    { time: "14:00", value: 150 },
-    { time: "15:00", value: 155 },
-    { time: "16:00", value: 153 },
-    { time: "17:00", value: 160 },
-  ],
-  "ds-003": [
-    { time: "10:01.05", value: 5100 },
-    { time: "10:01.10", value: 5102 },
-    { time: "10:01.15", value: 5098 },
-    { time: "10:01.20", value: 5105 },
-  ],
-  // Thêm dữ liệu giả cho các bộ dữ liệu khác nếu cần
-};
-
-
-const statusDisplay: { [key: string]: string } = {
-  Labeled: "Đã gán nhãn",
-  Processing: "Đang xử lý",
-  Raw: "Thô",
-};
-
-const chartConfig = {
-  value: {
-    label: "Giá trị",
-  },
-} satisfies ChartConfig;
-
+const initialState: UploadState = { status: 'idle', message: '' };
 
 function UploadButton() {
   const { pending } = useFormStatus();
@@ -139,8 +86,8 @@ function UploadButton() {
   );
 }
 
-function UploadCard() {
-  const [state, formAction] = useActionState(uploadFileAction, { status: 'idle' as const, message: '' });
+function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset) => void }) {
+  const [state, formAction] = useFormState(uploadFileAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -150,6 +97,9 @@ function UploadCard() {
         title: 'Thành công!',
         description: state.message,
       });
+      if (state.newDataset) {
+        onUploadSuccess(state.newDataset);
+      }
       formRef.current?.reset();
     } else if (state.status === 'error' && state.message) {
       toast({
@@ -158,7 +108,7 @@ function UploadCard() {
         description: state.message,
       });
     }
-  }, [state, toast]);
+  }, [state, toast, onUploadSuccess]);
 
   return (
     <Card>
@@ -184,9 +134,60 @@ function UploadCard() {
 }
 
 
+// --- Main Page Component ---
+
+const initialDatasets: Dataset[] = [
+  {
+    id: "ds-001",
+    name: "EURUSD_H1_2023",
+    status: "Labeled",
+    itemCount: 17800,
+    createdAt: "2023-10-01",
+  },
+  {
+    id: "ds-002",
+    name: "BTCUSD_M5_2024_Q1",
+    status: "Processing",
+    itemCount: 89500,
+    createdAt: "2024-03-15",
+  },
+  {
+    id: "ds-004",
+    name: "NASDAQ_Futures_H4",
+    status: "Labeled",
+    itemCount: 9800,
+    createdAt: "2022-11-30",
+  },
+];
+
+// Dữ liệu giả cho biểu đồ, mỗi key tương ứng với một id bộ dữ liệu
+const mockChartData: { [key: string]: { time: string, value: number }[] } = {
+  "ds-001": Array.from({ length: 50 }, (_, i) => ({ time: `14:${i < 10 ? '0' : ''}${i}`, value: 150 + Math.sin(i * 0.5) * 10 + Math.random() * 5 })),
+  "ds-004": Array.from({ length: 30 }, (_, i) => ({ time: `Day ${i+1}`, value: 9800 - i * 20 + Math.random() * 50 })),
+};
+
+const statusDisplay: { [key: string]: string } = {
+  Labeled: "Đã gán nhãn",
+  Processing: "Đang xử lý",
+  Raw: "Thô",
+};
+
+const chartConfig = {
+  value: {
+    label: "Giá trị",
+  },
+} satisfies ChartConfig;
+
 export default function DatasetsPage() {
+  const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  const handleAddDataset = (newDataset: Dataset) => {
+    setDatasets(prev => [...prev, newDataset]);
+    // Generate mock data for the new dataset
+    mockChartData[newDataset.id] = Array.from({ length: 100 }, (_, i) => ({ time: `T${i}`, value: Math.floor(Math.random() * (2000 - 1800 + 1)) + 1800 }));
+  };
 
   const currentChartData = activeDataset ? mockChartData[activeDataset.id] || [] : [];
   const currentDataPoint = currentChartData[currentIndex];
@@ -199,7 +200,7 @@ export default function DatasetsPage() {
   }
 
   const handleNext = () => {
-    if (currentIndex < currentChartData.length - 1) {
+    if (activeDataset && currentIndex < (mockChartData[activeDataset.id]?.length || 0) - 1) {
       setCurrentIndex(currentIndex + 1);
     }
   };
@@ -314,7 +315,7 @@ export default function DatasetsPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Hành động</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleSetDataset(dataset)}>Gán nhãn thủ công</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn thủ công</DropdownMenuItem>
                               <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
                               <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                               <DropdownMenuSeparator />
@@ -332,7 +333,7 @@ export default function DatasetsPage() {
             </Card>
           </div>
           <div className="space-y-6">
-            <UploadCard />
+            <UploadCard onUploadSuccess={handleAddDataset} />
             <Card>
               <CardHeader>
                 <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
@@ -341,11 +342,11 @@ export default function DatasetsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {currentDataPoint ? (
+                {activeDataset && currentDataPoint ? (
                     <div className="flex flex-col items-center">
                     <ChartContainer
                         config={chartConfig}
-                        className="mx-auto aspect-square h-[150px]"
+                        className="mx-auto aspect-square h-[150px] w-full"
                     >
                         <BarChart accessibilityLayer data={[currentDataPoint]}>
                         <CartesianGrid vertical={false} />
@@ -390,7 +391,7 @@ export default function DatasetsPage() {
                         <span className="text-xs">Bán</span>
                     </Button>
                  </div>
-                 <Button variant="outline" size="icon" onClick={handleNext} disabled={currentIndex >= currentChartData.length - 1 || !activeDataset}>
+                 <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= currentChartData.length - 1}>
                     <ChevronRight className="h-4 w-4" />
                  </Button>
               </CardFooter>
