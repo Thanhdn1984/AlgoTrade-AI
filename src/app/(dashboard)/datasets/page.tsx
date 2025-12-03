@@ -28,8 +28,6 @@ import {
   Circle,
   ArrowUp,
   ArrowDown,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -51,10 +49,8 @@ import { useFormStatus } from 'react-dom';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode } from 'lightweight-charts';
 import { useTheme } from "next-themes";
-import { Slider } from "@/components/ui/slider";
-
 
 // --- Data Types ---
 type ParsedData = { [key: string]: CandlestickChartData[] };
@@ -138,7 +134,13 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
 }
 
 // --- Candlestick Chart Component ---
-function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[], currentIndex: number }) {
+function CandlestickChart({ 
+    data, 
+    onCrosshairMove 
+}: { 
+    data: CandlestickChartData[], 
+    onCrosshairMove: (param: MouseEventParams<'Candlestick'>) => void 
+}) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<IChartApi | null>(null);
   const seriesApiRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -148,20 +150,22 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
     if (!chartContainerRef.current || data.length === 0) return;
 
     const isDark = theme === 'dark';
-
     const chartOptions = {
-      layout: {
-        background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
-        textColor: isDark ? '#D1D5DB' : '#1F2937',
-      },
-      grid: {
-        vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
-        horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
-      },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-      },
+        layout: {
+            background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
+            textColor: isDark ? '#D1D5DB' : '#1F2937',
+        },
+        grid: {
+            vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
+            horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
+        },
+        timeScale: {
+            timeVisible: true,
+            secondsVisible: false,
+        },
+        crosshair: {
+            mode: CrosshairMode.Normal,
+        },
     };
 
     if (!chartApiRef.current) {
@@ -179,12 +183,18 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
             wickDownColor: '#ef4444',
             wickUpColor: '#22c55e',
         });
+        chart.subscribeCrosshairMove(param => {
+            // We have to cast here because the library types are not specific enough
+            // about the series type in the event params.
+            onCrosshairMove(param as MouseEventParams<'Candlestick'>);
+        });
+
     } else {
         chartApiRef.current.applyOptions(chartOptions);
     }
     
-
     seriesApiRef.current?.setData(data);
+    chartApiRef.current?.timeScale().fitContent();
 
     const handleResize = () => {
       chartApiRef.current?.applyOptions({ width: chartContainerRef.current?.clientWidth });
@@ -192,32 +202,14 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
 
     window.addEventListener('resize', handleResize);
     
-    if (data[currentIndex]) {
-      chartApiRef.current?.timeScale().scrollToPosition(currentIndex - (data.length > 50 ? 25 : 0), false);
-    }
-    
     return () => {
       window.removeEventListener('resize', handleResize);
-      // Do not destroy the chart here to maintain state
+      // To prevent memory leaks, we should destroy the chart instance on unmount
+      // But we will keep it for now to preserve state between re-renders.
+      // chartApiRef.current?.remove();
     };
 
-  }, [data, theme]);
-  
-  useEffect(() => {
-    const currentPoint = data[currentIndex];
-     if (seriesApiRef.current && currentPoint) {
-        seriesApiRef.current.setMarkers([
-            {
-                time: currentPoint.time,
-                position: 'aboveBar',
-                color: theme === 'dark' ? '#A78BFA' : '#6D28D9', // primary colors
-                shape: 'arrowDown',
-                text: `Điểm ${currentIndex + 1}`
-            }
-        ]);
-     }
-  }, [currentIndex, data, theme]);
-
+  }, [data, theme, onCrosshairMove]);
 
   return <div ref={chartContainerRef} className="w-full h-[500px]" />;
 }
@@ -236,7 +228,8 @@ export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData | null>(null);
+
 
   const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
     setDatasets(prev => {
@@ -266,33 +259,29 @@ export default function DatasetsPage() {
 
 
   const fullChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
-  const currentDataPoint = fullChartData[currentIndex];
+  
+  const handleCrosshairMove = (param: MouseEventParams<'Candlestick'>) => {
+    if (!param.point || !param.seriesData.size) {
+        setHoveredDataPoint(null);
+        return;
+    }
+    // The seriesData is a map, we get the first (and only) series' data
+    const data = param.seriesData.values().next().value as CandlestickChartData;
+    setHoveredDataPoint(data);
+  };
 
 
   const handleSetDataset = (dataset: Dataset) => {
     if (dataset.status !== 'Processing') {
         setActiveDataset(dataset);
-        setCurrentIndex(0);
+        setHoveredDataPoint(null);
     }
   }
 
-  const handleNext = () => {
-    if (activeDataset && currentIndex < (parsedData[activeDataset.id]?.length || 0) - 1) {
-      setCurrentIndex(currentIndex + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
-  };
-
   const handleLabel = (label: 'BUY' | 'SELL' | 'HOLD') => {
-    if (!activeDataset || !currentDataPoint) return;
-    console.log(`Labeled point ${currentIndex} for dataset ${activeDataset.id} as ${label}`);
-    // Here you would typically save the label to your backend
-    handleNext(); // Move to the next point after labeling
+    if (!activeDataset || !hoveredDataPoint) return;
+    console.log(`Labeled point at time ${hoveredDataPoint.time} for dataset ${activeDataset.id} as ${label}`);
+    // In a real app, you'd save this label and potentially move to the next point
   };
 
 
@@ -436,13 +425,13 @@ export default function DatasetsPage() {
                 <CardHeader>
                 <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
                 <CardDescription>
-                    {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}` : "Chọn một bộ dữ liệu từ bảng trên để bắt đầu"}
+                    {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}. Di chuột trên biểu đồ để chọn điểm dữ liệu.` : "Chọn một bộ dữ liệu từ bảng trên để bắt đầu"}
                 </CardDescription>
                 </CardHeader>
                 <CardContent>
                 {activeDataset && fullChartData.length > 0 ? (
                     <div className="flex flex-col items-center">
-                        <CandlestickChart data={fullChartData} currentIndex={currentIndex} />
+                        <CandlestickChart data={fullChartData} onCrosshairMove={handleCrosshairMove} />
                     </div>
                 ) : (
                     <div className="flex items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
@@ -451,35 +440,30 @@ export default function DatasetsPage() {
                 )}
                 </CardContent>
                 <CardFooter className="flex-col items-stretch gap-4">
-                    <div className="flex items-center justify-center gap-4">
-                        <Label htmlFor="data-slider" className="text-sm text-muted-foreground">
-                            Điểm {currentIndex + 1} / {fullChartData.length}
-                        </Label>
-                         <Slider
-                            id="data-slider"
-                            min={0}
-                            max={fullChartData.length > 0 ? fullChartData.length - 1 : 0}
-                            step={1}
-                            value={[currentIndex]}
-                            onValueChange={(value) => setCurrentIndex(value[0])}
-                            disabled={!activeDataset || fullChartData.length === 0}
-                            className="w-[60%]"
-                        />
-                         {currentDataPoint && <p className="font-mono text-xs text-muted-foreground truncate" title={currentDataPoint.raw}>
-                            {new Date(currentDataPoint.time * 1000).toLocaleString('vi-VN')}
-                        </p>}
+                     <div className="flex items-center justify-center gap-4 h-6">
+                        {hoveredDataPoint ? (
+                            <div className="font-mono text-xs text-muted-foreground flex gap-4">
+                                <span>Time: {new Date(hoveredDataPoint.time * 1000).toLocaleString('vi-VN')}</span>
+                                <span>O: {hoveredDataPoint.open.toFixed(2)}</span>
+                                <span>H: {hoveredDataPoint.high.toFixed(2)}</span>
+                                <span>L: {hoveredDataPoint.low.toFixed(2)}</span>
+                                <span>C: {hoveredDataPoint.close.toFixed(2)}</span>
+                            </div>
+                        ) : (
+                             <p className="text-sm text-muted-foreground">Di chuyển chuột trên biểu đồ để xem chi tiết...</p>
+                        )}
                     </div>
 
                     <div className="flex justify-center gap-2">
-                        <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('BUY')}>
+                        <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset || !hoveredDataPoint} onClick={() => handleLabel('BUY')}>
                             <ArrowUp className="h-5 w-5" />
                             <span className="text-xs">Mua</span>
                         </Button>
-                        <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset} onClick={() => handleLabel('HOLD')}>
+                        <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset || !hoveredDataPoint} onClick={() => handleLabel('HOLD')}>
                             <Circle className="h-5 w-5" />
                             <span className="text-xs">Giữ</span>
                         </Button>
-                        <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('SELL')}>
+                        <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset || !hoveredDataPoint} onClick={() => handleLabel('SELL')}>
                             <ArrowDown className="h-5 w-5" />
                             <span className="text-xs">Bán</span>
                         </Button>
