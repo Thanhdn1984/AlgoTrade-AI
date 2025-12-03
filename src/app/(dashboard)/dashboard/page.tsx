@@ -153,14 +153,14 @@ export default function DashboardPage() {
                 <Line
                   dataKey="profit"
                   type="monotone"
-                  stroke="var(--color-profit)"
+                  stroke="var(--color-chart-1)"
                   strokeWidth={2}
                   dot={true}
                 />
                 <Line
                   dataKey="loss"
                   type="monotone"
-                  stroke="var(--color-loss)"
+                  stroke="var(--color-chart-2)"
                   strokeWidth={2}
                   dot={true}
                 />
