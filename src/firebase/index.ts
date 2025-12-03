@@ -4,6 +4,7 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 import { firebaseConfig } from './config';
 export * from './provider';
 export * from './client-provider';
+import { useCollection } from './firestore/use-collection';
 
 interface FirebaseInstances {
   firebaseApp: FirebaseApp;
@@ -22,10 +23,7 @@ export function initializeFirebase(): FirebaseInstances {
   return { firebaseApp, auth, firestore };
 }
 
-// Dummy exports for hooks that will be created later
-// This is to avoid breaking the build if they are imported elsewhere
 
-const useCollection = () => ({ data: [], loading: true });
 const useDoc = () => ({ data: null, loading: true });
 
 export { useCollection, useDoc };

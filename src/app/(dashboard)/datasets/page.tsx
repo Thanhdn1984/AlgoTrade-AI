@@ -51,12 +51,11 @@ import { useActionState } from 'react';
 import { uploadFileAction, trainModelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker, type PriceLine, type IPriceLine } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCollection } from "@/firebase/firestore/use-collection";
+import { useCollection, useFirestore } from "@/firebase";
 import { collection, doc, setDoc, deleteDoc, addDoc } from "firebase/firestore";
-import { useFirestore } from "@/firebase";
 
 // --- Data Types ---
 type ParsedData = { [key: string]: CandlestickChartData[] };
@@ -91,31 +90,25 @@ function UploadButton() {
   
   import { useFormStatus } from 'react-dom';
   
-  function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Dataset, 'id'>, parsedData: CandlestickChartData[]) => void }) {
+function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Dataset, 'id'>, parsedData: CandlestickChartData[]) => void }) {
     const [state, formAction] = useActionState(uploadFileAction, initialUploadState);
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
-    const lastProcessedId = useRef<string | null>(null);
   
     useEffect(() => {
-      // Use message as a pseudo-ID to prevent re-triggering on re-renders
-      const processingId = state.message;
-
-      if (state.status === 'success' && state.newDataset && state.parsedData && processingId !== lastProcessedId.current) {
+      if (state.status === 'success' && state.newDataset && state.parsedData) {
           toast({
             title: 'Thành công!',
             description: state.message,
           });
           onUploadSuccess(state.newDataset, state.parsedData);
           formRef.current?.reset();
-          lastProcessedId.current = processingId; 
-      } else if (state.status === 'error' && processingId !== lastProcessedId.current) {
+      } else if (state.status === 'error') {
         toast({
           variant: 'destructive',
           title: 'Lỗi',
           description: state.message,
         });
-        lastProcessedId.current = processingId;
       }
     }, [state, toast, onUploadSuccess]);
   
@@ -279,7 +272,7 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
             chart.remove();
             chartApiRef.current = null;
         };
-    }, [theme]); 
+    }, [theme, onChartClick, onCrosshairMove]); 
 
     useEffect(() => {
         if (chartApiRef.current?.series) {
@@ -326,15 +319,17 @@ export default function DatasetsPage() {
   const activeLabelModeRef = useRef<AnnotationType | null>(null);
   const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
   
-  const handleAddDataset = useCallback(async (newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
+ const handleAddDataset = useCallback(async (newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
     if (!datasetsCollection) return;
     try {
-      const docRef = await addDoc(datasetsCollection, newDatasetData);
-      setParsedData(prev => ({ ...prev, [docRef.id]: newParsedData }));
+        const docRef = await addDoc(datasetsCollection, newDatasetData);
+        // We are not storing parsedData in firestore, so just keep it in local state
+        setParsedData(prev => ({ ...prev, [docRef.id]: newParsedData }));
     } catch (error) {
-      console.error("Error adding dataset to Firestore:", error);
+        console.error("Error adding dataset to Firestore:", error);
     }
-  }, [datasetsCollection]);
+}, [datasetsCollection]);
+
 
   const handleDeleteDataset = (datasetId: string) => {
     if (!firestore) return;
