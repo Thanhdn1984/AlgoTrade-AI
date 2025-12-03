@@ -59,22 +59,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 type ParsedData = { [key: string]: CandlestickChartData[] };
 
 // --- Mock Data ---
-const initialDatasets: Dataset[] = [
-    {
-      id: "eurusd-2023",
-      name: "EURUSD_H1_2023.csv",
-      status: "Labeled",
-      itemCount: 8760,
-      createdAt: "2023-01-01",
-    },
-    {
-      id: "btcusd-2024",
-      name: "BTCUSD_M5_2024_Q1.csv",
-      status: "Raw",
-      itemCount: 25920,
-      createdAt: "2024-01-01",
-    },
-];
+const initialDatasets: Dataset[] = [];
 
 // --- Components for Upload ---
 
@@ -426,7 +411,7 @@ export default function DatasetsPage() {
       }
 
       if (newMarker) {
-         setLabeledPoints(prev => [...prev, { ...newMarker, id: `point-${Date.now()}` } as LabeledPoint]);
+         setLabeledPoints(prev => [...prev, { ...newMarker, id: `point-${Date.now()}` } as LabeledPoint].sort((a,b) => (a.time as number) - (b.time as number)));
       }
       
       activeLabelModeRef.current = null;
@@ -443,15 +428,14 @@ export default function DatasetsPage() {
   }
   
   const markers = useMemo(() => {
-    const pointsForActiveDataset = activeDataset ? labeledPoints : [];
-    return pointsForActiveDataset.map(p => ({
+    return labeledPoints.map(p => ({
         time: p.time,
         position: p.position,
         color: p.color,
         shape: p.shape,
         text: p.text
     }));
-  }, [labeledPoints, activeDataset]);
+  }, [labeledPoints]);
 
   const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => {
     return (
