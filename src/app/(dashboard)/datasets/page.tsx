@@ -44,15 +44,18 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import type { Dataset, CandlestickChartData } from "@/lib/types";
-import { useEffect, useRef, useState, useActionState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useActionState } from 'react';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 
 // --- Data Types ---
 type ParsedData = { [key: string]: CandlestickChartData[] };
+type LabelMarker = SeriesMarker<UTCTimestamp>;
+type LabeledPoints = { [key: string]: LabelMarker[] };
 
 
 // --- Components for Upload ---
@@ -136,12 +139,14 @@ function UploadButton() {
   }
 
 // --- Candlestick Chart Component ---
-function CandlestickChart({ 
-    data, 
-    onCrosshairMove 
-}: { 
-    data: CandlestickChartData[], 
-    onCrosshairMove: (param: MouseEventParams<'Candlestick'>) => void 
+function CandlestickChart({
+  data,
+  markers = [],
+  onCrosshairMove,
+}: {
+  data: CandlestickChartData[];
+  markers?: LabelMarker[];
+  onCrosshairMove: (param: MouseEventParams<'Candlestick'>) => void;
 }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<IChartApi | null>(null);
@@ -186,8 +191,6 @@ function CandlestickChart({
             wickUpColor: '#22c55e',
         });
         chart.subscribeCrosshairMove(param => {
-            // We have to cast here because the library types are not specific enough
-            // about the series type in the event params.
             onCrosshairMove(param as MouseEventParams<'Candlestick'>);
         });
 
@@ -196,7 +199,9 @@ function CandlestickChart({
     }
     
     seriesApiRef.current?.setData(data);
+    seriesApiRef.current?.setMarkers(markers);
     chartApiRef.current?.timeScale().fitContent();
+
 
     const handleResize = () => {
       chartApiRef.current?.applyOptions({ width: chartContainerRef.current?.clientWidth });
@@ -206,12 +211,9 @@ function CandlestickChart({
     
     return () => {
       window.removeEventListener('resize', handleResize);
-      // To prevent memory leaks, we should destroy the chart instance on unmount
-      // But we will keep it for now to preserve state between re-renders.
-      // chartApiRef.current?.remove();
     };
 
-  }, [data, theme, onCrosshairMove]);
+  }, [data, theme, markers, onCrosshairMove]);
 
   return <div ref={chartContainerRef} className="w-full h-[500px]" />;
 }
@@ -231,6 +233,7 @@ export default function DatasetsPage() {
   const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData | null>(null);
+  const [labeledPoints, setLabeledPoints] = useState<LabeledPoints>({});
 
 
   const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
@@ -245,6 +248,10 @@ export default function DatasetsPage() {
         ...prev,
         [newDataset.id]: newParsedData,
     }));
+    setLabeledPoints(prev => ({
+        ...prev,
+        [newDataset.id]: []
+    }));
   };
 
   const handleDeleteDataset = (datasetId: string) => {
@@ -254,6 +261,11 @@ export default function DatasetsPage() {
         delete newParsedData[datasetId];
         return newParsedData;
     });
+     setLabeledPoints(prev => {
+        const newLabeledPoints = { ...prev };
+        delete newLabeledPoints[datasetId];
+        return newLabeledPoints;
+    });
     if (activeDataset?.id === datasetId) {
         setActiveDataset(null);
     }
@@ -261,6 +273,7 @@ export default function DatasetsPage() {
 
 
   const fullChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
+  const currentMarkers = activeDataset ? labeledPoints[activeDataset.id] || [] : [];
   
   const handleCrosshairMove = useCallback((param: MouseEventParams<'Candlestick'>) => {
     if (!param.point || !param.seriesData.size) {
@@ -282,8 +295,49 @@ export default function DatasetsPage() {
 
   const handleLabel = (label: 'BUY' | 'SELL' | 'HOLD') => {
     if (!activeDataset || !hoveredDataPoint) return;
-    console.log(`Labeled point at time ${hoveredDataPoint.time} for dataset ${activeDataset.id} as ${label}`);
-    // In a real app, you'd save this label and potentially move to the next point
+    
+    let newMarker: LabelMarker;
+
+    switch (label) {
+        case 'BUY':
+            newMarker = {
+                time: hoveredDataPoint.time,
+                position: 'belowBar',
+                color: '#22c55e',
+                shape: 'arrowUp',
+                text: 'Buy',
+            };
+            break;
+        case 'SELL':
+             newMarker = {
+                time: hoveredDataPoint.time,
+                position: 'aboveBar',
+                color: '#ef4444',
+                shape: 'arrowDown',
+                text: 'Sell',
+            };
+            break;
+        case 'HOLD':
+            newMarker = {
+                time: hoveredDataPoint.time,
+                position: 'belowBar',
+                color: '#6b7280',
+                shape: 'circle',
+                size: 0.5,
+            };
+            break;
+    }
+
+    setLabeledPoints(prev => {
+        const currentPoints = prev[activeDataset.id] || [];
+        // Prevent duplicate markers for the same point
+        const otherPoints = currentPoints.filter(p => p.time !== hoveredDataPoint.time);
+        return {
+            ...prev,
+            [activeDataset.id]: [...otherPoints, newMarker]
+        };
+    });
+
   };
 
 
@@ -433,7 +487,11 @@ export default function DatasetsPage() {
                 <CardContent>
                 {activeDataset && fullChartData.length > 0 ? (
                     <div className="flex flex-col items-center">
-                        <CandlestickChart data={fullChartData} onCrosshairMove={handleCrosshairMove} />
+                        <CandlestickChart 
+                            data={fullChartData} 
+                            markers={currentMarkers}
+                            onCrosshairMove={handleCrosshairMove} 
+                        />
                     </div>
                 ) : (
                     <div className="flex items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
