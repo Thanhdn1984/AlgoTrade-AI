@@ -1,5 +1,5 @@
 'use client';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useFormStatus } from 'react';
 import { generateSignalsAction } from '@/lib/actions';
 import { useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -63,7 +63,7 @@ function SubmitButton() {
 }
 
 export function SignalGenerationForm() {
-  const [state, formAction] = useFormState(generateSignalsAction, initialState);
+  const [state, formAction] = useActionState(generateSignalsAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
