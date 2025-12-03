@@ -245,10 +245,8 @@ interface CandlestickChartProps {
 
 const CandlestickChart = ({ data, markers, priceLines, onChartClick, onCrosshairMove }: CandlestickChartProps) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
-    const chartApiRef = useRef<IChartApi | null>(null);
-    const seriesApiRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+    const chartApiRef = useRef<{chart: IChartApi, series: ISeriesApi<'Candlestick'>} | null>(null);
     const priceLineRefs = useRef(new Map<string, IPriceLine>());
-    
     const { theme } = useTheme();
 
     // Chart initialization and lifecycle management
@@ -277,8 +275,7 @@ const CandlestickChart = ({ data, markers, priceLines, onChartClick, onCrosshair
             wickDownColor: '#ef4444', wickUpColor: '#22c55e',
         });
         
-        chartApiRef.current = chart;
-        seriesApiRef.current = series;
+        chartApiRef.current = { chart, series };
 
         chart.subscribeClick(onChartClick);
         chart.subscribeCrosshairMove(onCrosshairMove);
@@ -294,37 +291,34 @@ const CandlestickChart = ({ data, markers, priceLines, onChartClick, onCrosshair
             chart.unsubscribeCrosshairMove(onCrosshairMove);
             chart.remove();
             chartApiRef.current = null;
-            seriesApiRef.current = null;
         };
-    }, [theme, onChartClick, onCrosshairMove]);
+    }, [theme]); // ONLY re-run on theme change
 
     // Update data
     useEffect(() => {
-        if (seriesApiRef.current) {
-            seriesApiRef.current.setData(data);
+        if (chartApiRef.current?.series) {
+            chartApiRef.current.series.setData(data);
             if(data.length > 0) {
-                 chartApiRef.current?.timeScale().fitContent();
+                 chartApiRef.current.chart.timeScale().fitContent();
             }
         }
     }, [data]);
 
     // Update markers
     useEffect(() => {
-        if (seriesApiRef.current) {
-            seriesApiRef.current.setMarkers(markers);
+        if (chartApiRef.current?.series) {
+            chartApiRef.current.series.setMarkers(markers);
         }
     }, [markers]);
 
     // Update price lines
     useEffect(() => {
-        const series = seriesApiRef.current;
+        const series = chartApiRef.current?.series;
         if (!series) return;
 
-        // Clear all existing lines from the chart
         priceLineRefs.current.forEach(line => series.removePriceLine(line));
         priceLineRefs.current.clear();
         
-        // Draw new lines from props
         priceLines.forEach(options => {
             if (options.annotationType === 'FVG' && options.price2 !== undefined) {
                  const topLine = series.createPriceLine({
