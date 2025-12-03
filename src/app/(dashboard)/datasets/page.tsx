@@ -30,6 +30,7 @@ import {
   LineChart as LineChartIcon,
   Ruler,
   Cpu,
+  Wand2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -48,7 +49,7 @@ import {
 import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback, memo, useMemo } from "react";
 import { useActionState } from 'react';
-import { uploadFileAction, trainModelAction } from "@/lib/actions";
+import { uploadFileAction, trainModelAction, autoLabelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
@@ -57,9 +58,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 // --- Data Types ---
 type ParsedData = { [key: string]: CandlestickChartData[] };
-
-// --- Mock Data ---
-const initialDatasets: Dataset[] = [];
 
 // --- Components for Upload ---
 
@@ -299,19 +297,40 @@ const statusDisplay: { [key: string]: string } = {
   Raw: "Thô",
 };
 
+const initialAutoLabelState = { status: 'idle' as const, message: '' };
 
 export default function DatasetsPage() {
   // Global state
-  const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [labeledPoints, setLabeledPoints] = useState<LabeledPoint[]>([]);
   const [loadingDatasets, setLoadingDatasets] = useState(true);
 
+  // Action states
+  const [autoLabelState, autoLabelFormAction, isAutoLabeling] = useActionState(autoLabelAction, initialAutoLabelState);
+  const { toast } = useToast();
+
   useEffect(() => {
     // Simulate loading
     setTimeout(() => setLoadingDatasets(false), 500);
   }, []);
+
+  useEffect(() => {
+    if (autoLabelState.status === 'idle' || isAutoLabeling) return;
+
+    if (autoLabelState.status === 'success' && autoLabelState.labeledPoints) {
+      toast({ title: 'Thành công!', description: autoLabelState.message });
+      // Merge new labels, avoiding duplicates
+      setLabeledPoints(prev => {
+        const existingTimes = new Set(prev.map(p => p.time));
+        const newPoints = autoLabelState.labeledPoints!.filter(p => !existingTimes.has(p.time));
+        return [...prev, ...newPoints].sort((a, b) => (a.time as number) - (b.time as number));
+      });
+    } else if (autoLabelState.status === 'error') {
+      toast({ variant: 'destructive', title: 'Lỗi gán nhãn tự động', description: autoLabelState.message });
+    }
+  }, [autoLabelState, isAutoLabeling, toast]);
   
   // UI State
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData & { price?: number } | null>(null);
@@ -414,6 +433,7 @@ export default function DatasetsPage() {
   }, [activeDataset]);
 
   const getHelperText = () => {
+    if (isAutoLabeling) return 'AI đang phân tích, vui lòng đợi...';
     if (!activeDataset) return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
     const currentMode = activeButton;
     if (currentMode) {
@@ -432,6 +452,23 @@ export default function DatasetsPage() {
     }));
   }, [labeledPoints]);
 
+  const rawDataToCsv = (data: CandlestickChartData[]): string => {
+    if (!data || data.length === 0) return '';
+    const headers = 'time,open,high,low,close';
+    const rows = data.map(d => `${d.time},${d.open},${d.high},${d.low},${d.close}`);
+    return [headers, ...rows].join('\n');
+  };
+
+  const handleAutoLabel = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!activeDataset) return;
+    const formData = new FormData();
+    formData.append('datasetId', activeDataset.id);
+    const csvData = rawDataToCsv(parsedData[activeDataset.id] || []);
+    formData.append('csvData', csvData);
+    autoLabelFormAction(formData);
+  };
+
   const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => {
     return (
       <TooltipProvider>
@@ -448,7 +485,7 @@ export default function DatasetsPage() {
                   mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
                   'border-primary ring-2 ring-primary')
               )}
-              disabled={!activeDataset}
+              disabled={!activeDataset || isAutoLabeling}
               onClick={() => toggleLabelMode(mode)}
             >
               {children}
@@ -564,7 +601,19 @@ export default function DatasetsPage() {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuLabel>Hành động</DropdownMenuLabel>
                                   <DropdownMenuItem disabled={dataset.status === 'Processing'} onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn</DropdownMenuItem>
-                                  <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={handleAutoLabel} disabled={isAutoLabeling || activeDataset?.id !== dataset.id}>
+                                    {isAutoLabeling && activeDataset?.id === dataset.id ? (
+                                      <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        <span>Đang gán nhãn...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Wand2 className="mr-2 h-4 w-4" />
+                                        <span>Gán nhãn tự động</span>
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
@@ -643,11 +692,11 @@ export default function DatasetsPage() {
                          <AnnotationButton mode="BOS" tooltip="Phá vỡ cấu trúc (Break of Structure)">
                             <LineChartIcon className="h-5 w-5" />
                             <span className="text-xs">BOS</span>
-                        </AnnotationButton>
+                        </Button>
                          <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)">
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
-                        </AnnotationButton>
+                        </Button>
                     </div>
                 </CardFooter>
             </Card>

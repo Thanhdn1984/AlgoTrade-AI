@@ -2,9 +2,10 @@
 
 import {generateTradeSignals} from '@/ai/flows/generate-trade-signals';
 import {labelTrainingData} from '@/ai/flows/label-training-data';
+import { autoLabelData } from '@/ai/flows/auto-label-data';
 import {z} from 'zod';
 import { revalidatePath } from 'next/cache';
-import type { Dataset, CandlestickChartData, FirebaseDataset } from './types';
+import type { Dataset, CandlestickChartData, LabeledPoint } from './types';
 import type { UTCTimestamp } from 'lightweight-charts';
 
 
@@ -234,7 +235,7 @@ export async function trainModelAction(prevState: TrainModelState, formData: For
         }
 
         console.log(`Bắt đầu huấn luyện mô hình cho bộ dữ liệu: ${validatedFields.data.datasetId}`);
-        console.log(`Dữ liệu gán nhãn:`, validatedFields.data.labeledDataCSV);
+        // console.log(`Dữ liệu gán nhãn:`, validatedFields.data.labeledDataCSV);
 
         // Call the Genkit flow
         const result = await labelTrainingData({
@@ -257,4 +258,49 @@ export async function trainModelAction(prevState: TrainModelState, formData: For
             message: error.message || "Không thể bắt đầu huấn luyện mô hình.",
         };
     }
+}
+
+
+// --- Action for Auto Labeling ---
+const autoLabelSchema = z.object({
+  datasetId: z.string(),
+  csvData: z.string(),
+});
+
+type AutoLabelState = {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+  labeledPoints?: LabeledPoint[];
+};
+
+export async function autoLabelAction(prevState: AutoLabelState, formData: FormData): Promise<AutoLabelState> {
+  try {
+    const validatedFields = autoLabelSchema.safeParse({
+      datasetId: formData.get('datasetId'),
+      csvData: formData.get('csvData'),
+    });
+
+    if (!validatedFields.success) {
+      return {
+        status: 'error',
+        message: 'Dữ liệu đầu vào cho việc gán nhãn tự động không hợp lệ.',
+      };
+    }
+
+    const result = await autoLabelData({
+      csvData: validatedFields.data.csvData,
+    });
+
+    return {
+      status: 'success',
+      message: `AI đã gán nhãn thành công ${result.length} điểm.`,
+      labeledPoints: result,
+    };
+  } catch (error: any) {
+    console.error('Lỗi khi gán nhãn tự động:', error);
+    return {
+      status: 'error',
+      message: error.message || 'Không thể gán nhãn tự động.',
+    };
+  }
 }
