@@ -1,4 +1,4 @@
-import type { UTCTimestamp, PriceLineOptions } from 'lightweight-charts';
+import type { UTCTimestamp, PriceLineOptions, SeriesMarker } from 'lightweight-charts';
 
 export type TradeSignal = {
   symbol: string;
@@ -17,8 +17,13 @@ export type Model = {
   f1Score?: string;
 };
 
-export type Dataset = {
+// This is the type for the data returned from Firestore
+export type Dataset = FirebaseDataset & {
   id: string;
+}
+
+// This is the type for documents in the "datasets" collection
+export type FirebaseDataset = {
   name: string;
   status: 'Raw' | 'Processing' | 'Labeled';
   itemCount: number;
@@ -34,6 +39,12 @@ export type CandlestickChartData = {
     raw: string;
     index: number;
 };
+
+export type LabeledPoint = SeriesMarker<UTCTimestamp> & {
+    id: string;
+    time: UTCTimestamp;
+    text: string;
+}
 
 export type LabelType = 'BUY' | 'SELL' | 'HOLD';
 export type LineLabelType = 'BOS' | 'CHOCH';

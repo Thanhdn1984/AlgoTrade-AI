@@ -45,7 +45,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Dataset, CandlestickChartData, AnnotationType } from "@/lib/types";
+import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint, FirebaseDataset } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { useActionState } from 'react';
 import { uploadFileAction, trainModelAction } from "@/lib/actions";
@@ -54,13 +54,12 @@ import { cn } from "@/lib/utils";
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
+import { useCollection } from "@/firebase";
+import { collection, doc, setDoc, deleteDoc, addDoc } from "firebase/firestore";
+import { useFirestore } from "@/firebase";
 
 // --- Data Types ---
 type ParsedData = { [key: string]: CandlestickChartData[] };
-type LabelMarker = SeriesMarker<UTCTimestamp>;
-type LabeledPoints = { [key: string]: LabelMarker[] };
-
 
 // --- Components for Upload ---
 
@@ -97,6 +96,7 @@ function UploadButton() {
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const lastProcessedId = useRef<string | null>(null);
+    const firestore = useFirestore();
   
     useEffect(() => {
       if (state.status === 'success' && state.newDataset && state.parsedData && state.newDataset.id !== lastProcessedId.current) {
@@ -104,6 +104,17 @@ function UploadButton() {
             title: 'Thành công!',
             description: state.message,
           });
+          
+          if (firestore) {
+            const datasetDoc: FirebaseDataset = {
+              name: state.newDataset.name,
+              status: state.newDataset.status,
+              itemCount: state.newDataset.itemCount,
+              createdAt: state.newDataset.createdAt,
+            }
+            setDoc(doc(firestore, "datasets", state.newDataset.id), datasetDoc);
+          }
+
           onUploadSuccess(state.newDataset, state.parsedData);
           formRef.current?.reset();
           lastProcessedId.current = state.newDataset.id; 
@@ -115,7 +126,7 @@ function UploadButton() {
         });
         lastProcessedId.current = null;
       }
-    }, [state, toast, onUploadSuccess]);
+    }, [state, toast, onUploadSuccess, firestore]);
   
     return (
       <Card>
@@ -151,7 +162,7 @@ type TrainModelState = {
 
 function TrainModelCard({ activeDataset, labeledPoints }: { 
     activeDataset: Dataset | null;
-    labeledPoints: LabeledPoints;
+    labeledPoints: LabeledPoint[];
 }) {
     const [state, formAction] = useActionState(trainModelAction, initialTrainState);
     const { pending } = useFormStatus();
@@ -170,7 +181,7 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
         e.preventDefault();
         if (!activeDataset) return;
 
-        const points = labeledPoints[activeDataset.id] || [];
+        const points = labeledPoints || [];
         const labeledData = [
             'type,time,price,text', // header
             ...points.map(p => `POINT,${p.time},${p.position === 'aboveBar' ? 'high' : 'low'},${p.text}`),
@@ -196,7 +207,7 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
                     </p>
                      {activeDataset && (
                         <div className="text-xs mt-2 text-muted-foreground">
-                            <p>Điểm dữ liệu: {(labeledPoints[activeDataset.id] || []).length}</p>
+                            <p>Điểm dữ liệu: {labeledPoints.length}</p>
                         </div>
                     )}
                 </CardContent>
@@ -204,7 +215,7 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
                     <Button 
                         type="submit" 
                         className="w-full" 
-                        disabled={pending || !activeDataset || (labeledPoints[activeDataset.id] || []).length === 0}
+                        disabled={pending || !activeDataset || labeledPoints.length === 0}
                     >
                          {pending ? (
                           <>
@@ -235,9 +246,9 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
     const chartApiRef = useRef<{ chart: IChartApi, series: ISeriesApi<'Candlestick'> } | null>(null);
     const { theme } = useTheme();
 
-    useEffect(() => {
+     useEffect(() => {
         if (!chartContainerRef.current) return;
-
+        
         const isDark = theme === 'dark';
         const chart = createChart(chartContainerRef.current, {
             layout: {
@@ -277,7 +288,7 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
             chart.remove();
             chartApiRef.current = null;
         };
-    }, [theme]);
+    }, [theme]); // Only re-create chart on theme change
 
     useEffect(() => {
         if (chartApiRef.current?.series) {
@@ -296,7 +307,6 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
 
     return <div ref={chartContainerRef} className="w-full h-[500px]" />;
 });
-
 CandlestickChart.displayName = 'CandlestickChart';
 
 
@@ -310,12 +320,15 @@ const statusDisplay: { [key: string]: string } = {
 
 export default function DatasetsPage() {
   // Global state
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const firestore = useFirestore();
+  const datasetsCollection = firestore ? collection(firestore, 'datasets') : null;
+  const { data: datasets = [], loading: loadingDatasets } = useCollection<Dataset>(datasetsCollection);
+  
   const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
-  
-  // Annotation state
-  const [labeledPoints, setLabeledPoints] = useState<LabeledPoints>({});
+
+  const activeDatasetPointsCollection = (firestore && activeDataset) ? collection(firestore, 'datasets', activeDataset.id, 'labeledPoints') : null;
+  const { data: labeledPoints = [], loading: loadingPoints } = useCollection<LabeledPoint>(activeDatasetPointsCollection);
   
   // UI State
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData & { price?: number } | null>(null);
@@ -325,27 +338,22 @@ export default function DatasetsPage() {
   const activeLabelModeRef = useRef<AnnotationType | null>(null);
   
   const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
-    setDatasets(prev => {
-        if (prev.find(d => d.id === newDataset.id)) return prev;
-        return [...prev, newDataset];
-    });
+    // Data is now added to firestore via UploadCard
     setParsedData(prev => ({ ...prev, [newDataset.id]: newParsedData }));
-    if (!labeledPoints[newDataset.id]) {
-      setLabeledPoints(prev => ({ ...prev, [newDataset.id]: [] }));
-    }
   };
 
   const handleDeleteDataset = (datasetId: string) => {
-    setDatasets(prev => prev.filter(d => d.id !== datasetId));
+    if (!firestore) return;
+    deleteDoc(doc(firestore, "datasets", datasetId));
+    
+    // Note: Deleting subcollections is a more complex operation, 
+    // often handled by a Firebase Cloud Function for atomicity.
+    // For this client-side demo, we'll just delete the parent.
+
     setParsedData(prev => {
         const newParsedData = { ...prev };
         delete newParsedData[datasetId];
         return newParsedData;
-    });
-     setLabeledPoints(prev => {
-        const newLabeledPoints = { ...prev };
-        delete newLabeledPoints[datasetId];
-        return newLabeledPoints;
     });
 
     if (activeDataset?.id === datasetId) {
@@ -356,7 +364,6 @@ export default function DatasetsPage() {
   const handleSetDataset = (dataset: Dataset) => {
     if (dataset.status === 'Processing' || dataset.id === activeDataset?.id) return;
     
-    // Reset interaction state when switching datasets
     activeLabelModeRef.current = null;
     setActiveButton(null);
 
@@ -365,13 +372,9 @@ export default function DatasetsPage() {
   }
 
   const toggleLabelMode = (mode: AnnotationType) => {
-    if (activeLabelModeRef.current === mode) {
-        activeLabelModeRef.current = null;
-        setActiveButton(null);
-    } else {
-        activeLabelModeRef.current = mode;
-        setActiveButton(mode);
-    }
+    const newMode = activeLabelModeRef.current === mode ? null : mode;
+    activeLabelModeRef.current = newMode;
+    setActiveButton(newMode);
   };
   
   const handleCrosshairMove = useCallback((param: MouseEventParams) => {
@@ -381,14 +384,14 @@ export default function DatasetsPage() {
       }
       const data = param.seriesData.values().next().value as CandlestickChartData;
       const price = param.panePrices?.[0];
-      if (data) {
+      if (data && price) {
           setHoveredDataPoint({...data, price});
       }
   }, []);
 
   const handleChartClick = useCallback((param: MouseEventParams) => {
       const currentMode = activeLabelModeRef.current;
-      if (!currentMode || !activeDataset || !param.point || !param.seriesData || !param.seriesData.size) {
+      if (!firestore || !currentMode || !activeDataset || !param.point || !param.seriesData || !param.seriesData.size) {
           return;
       }
       
@@ -396,42 +399,36 @@ export default function DatasetsPage() {
       if (!dataPoint) return;
 
       const time = dataPoint.time;
-      const currentDatasetId = activeDataset.id;
+      let newMarker: Omit<LabeledPoint, 'id'> | null = null;
       
-      let newMarker: LabelMarker | null = null;
-      
+      const commonProps = { time, text: currentMode };
+
       switch (currentMode) {
         case 'BUY':
-            newMarker = { time, position: 'belowBar', color: '#22c55e', shape: 'arrowUp', text: 'Buy' };
+            newMarker = { ...commonProps, position: 'belowBar', color: '#22c55e', shape: 'arrowUp' };
             break;
         case 'SELL':
-            newMarker = { time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' };
+            newMarker = { ...commonProps, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown' };
             break;
         case 'HOLD':
-            newMarker = { time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5, text: 'Hold' };
+            newMarker = { ...commonProps, position: 'belowBar', color: '#6b7280', shape: 'circle' };
             break;
         case 'BOS':
-            newMarker = { time, position: 'aboveBar', color: '#3b82f6', shape: 'circle', size: 0.2, text: 'BOS' };
+            newMarker = { ...commonProps, position: 'aboveBar', color: '#3b82f6', shape: 'circle' };
             break;
         case 'CHOCH':
-            newMarker = { time, position: 'aboveBar', color: '#f97316', shape: 'circle', size: 0.2, text: 'CHOCH' };
+            newMarker = { ...commonProps, position: 'aboveBar', color: '#f97316', shape: 'circle' };
             break;
       }
-      
 
       if (newMarker) {
-        setLabeledPoints(prev => {
-            const currentPoints = prev[currentDatasetId] || [];
-            // Allow multiple markers of different types, but only one of each type per time point for simplicity
-            const otherPoints = currentPoints.filter(p => p.time !== time || p.text !== newMarker?.text);
-            const newPoints = [...otherPoints, newMarker!];
-            newPoints.sort((a, b) => (a.time as number) - (b.time as number));
-            return { ...prev, [currentDatasetId]: newPoints };
-        });
+         addDoc(collection(firestore, 'datasets', activeDataset.id, 'labeledPoints'), newMarker);
       }
       
-      toggleLabelMode(currentMode); // Toggle off after placing
-  }, [activeDataset]);
+      // Toggle off after placing
+      activeLabelModeRef.current = null;
+      setActiveButton(null);
+  }, [activeDataset, firestore]);
 
   const getHelperText = () => {
     if (!activeDataset) return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
@@ -441,6 +438,16 @@ export default function DatasetsPage() {
     }
     return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
   }
+  
+  const markers = useMemo(() => {
+    return labeledPoints.map(p => ({
+        time: p.time,
+        position: p.position,
+        color: p.color,
+        shape: p.shape,
+        text: p.text
+    }));
+  }, [labeledPoints]);
 
   const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => (
     <TooltipProvider>
@@ -512,7 +519,13 @@ export default function DatasetsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {datasets.length === 0 ? (
+                    {loadingDatasets ? (
+                        <TableRow>
+                            <TableCell colSpan={5} className="h-24 text-center">
+                                <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+                            </TableCell>
+                        </TableRow>
+                    ) : datasets.length === 0 ? (
                         <TableRow>
                             <TableCell colSpan={5} className="h-24 text-center">
                                 Chưa có bộ dữ liệu nào. Tải lên một tệp để bắt đầu.
@@ -604,7 +617,7 @@ export default function DatasetsPage() {
                         {activeDataset ? (
                              <CandlestickChart
                                 data={parsedData[activeDataset.id] || []}
-                                markers={labeledPoints[activeDataset.id] || []}
+                                markers={markers}
                                 onChartClick={handleChartClick}
                                 onCrosshairMove={handleCrosshairMove}
                             />

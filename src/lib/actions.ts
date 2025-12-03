@@ -4,7 +4,7 @@ import {generateTradeSignals} from '@/ai/flows/generate-trade-signals';
 import {labelTrainingData} from '@/ai/flows/label-training-data';
 import {z} from 'zod';
 import { revalidatePath } from 'next/cache';
-import type { Dataset, CandlestickChartData } from './types';
+import type { Dataset, CandlestickChartData, FirebaseDataset } from './types';
 import type { UTCTimestamp } from 'lightweight-charts';
 
 
@@ -193,7 +193,8 @@ export async function uploadFileAction(prevState: UploadState, formData: FormDat
             createdAt: new Date().toISOString().split('T')[0],
         };
 
-        revalidatePath('/datasets');
+        // This action now only prepares the data. The component will handle writing to Firestore.
+        // revalidatePath('/datasets');
 
         return {
             status: 'success',

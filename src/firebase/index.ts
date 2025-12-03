@@ -1,0 +1,31 @@
+import { getApps, initializeApp, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { firebaseConfig } from './config';
+export * from './provider';
+export * from './client-provider';
+
+interface FirebaseInstances {
+  firebaseApp: FirebaseApp;
+  auth: Auth;
+  firestore: Firestore;
+}
+
+export function initializeFirebase(): FirebaseInstances {
+  const apps = getApps();
+  const firebaseApp =
+    apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
+
+  const auth = getAuth(firebaseApp);
+  const firestore = getFirestore(firebaseApp);
+
+  return { firebaseApp, auth, firestore };
+}
+
+// Dummy exports for hooks that will be created later
+// This is to avoid breaking the build if they are imported elsewhere
+
+const useCollection = () => ({ data: [], loading: true });
+const useDoc = () => ({ data: null, loading: true });
+
+export { useCollection, useDoc };
