@@ -60,7 +60,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 // --- Data Types ---
-type ChartDataPoint = { time: string; value: number };
+type ChartDataPoint = { time: string; value: number; raw: string; };
 type ParsedData = { [key: string]: ChartDataPoint[] };
 
 
@@ -98,43 +98,53 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   const formRef = useRef<HTMLFormElement>(null);
   const lastProcessedId = useRef<string | null>(null);
 
-  // Parse CSV content into chart data
   const parseCSV = (content: string): ChartDataPoint[] => {
     const rows = content.split('\n').filter(row => row.trim() !== '');
     if (rows.length < 2) return [];
-
-    const headers = rows.shift()!.split(',').map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
-
+  
+    // Remove <> and convert to lowercase for flexible matching
+    const headers = rows.shift()!.split(/\s+|,/).map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
+  
     const findIndexFlexible = (possibleNames: string[]) => {
-        return headers.findIndex(header => 
-            possibleNames.some(name => header.includes(name))
-        );
+      return headers.findIndex(header =>
+        possibleNames.some(name => header.includes(name))
+      );
     };
-
+  
     const closeIndex = findIndexFlexible(['close', 'last']);
-    const timeIndex = findIndexFlexible(['time', 'date']);
-    
-    if (closeIndex === -1 || timeIndex === -1) {
-        toast({
-            variant: 'destructive',
-            title: 'Lỗi Phân tích CSV',
-            description: `Không tìm thấy các cột cần thiết. Cần cột 'Close'/'Last' và 'Time'/'Date'. Tìm thấy: ${headers.join(', ')}`,
-        });
-        return [];
+    const dateIndex = findIndexFlexible(['date']);
+    const timeIndex = findIndexFlexible(['time']);
+  
+    if (closeIndex === -1 || (dateIndex === -1 && timeIndex === -1)) {
+      toast({
+        variant: 'destructive',
+        title: 'Lỗi Phân tích CSV',
+        description: `Không tìm thấy các cột cần thiết. Cần cột 'Close'/'Last' và 'Time'/'Date'. Tìm thấy: ${headers.join(', ')}`,
+      });
+      return [];
     }
-
-    return rows.map((row, index) => {
-        const values = row.split(',');
+  
+    return rows.map((row) => {
+        // Handle both comma and space separators by replacing commas with spaces and splitting by whitespace
+        const values = row.trim().split(/\s+|,/).filter(Boolean);
         const value = parseFloat(values[closeIndex]);
-        const time = values[timeIndex] || `Điểm ${index + 1}`;
-        return { time, value };
+        
+        let time = `Điểm`;
+        if (dateIndex !== -1 && timeIndex !== -1) {
+            time = `${values[dateIndex]} ${values[timeIndex]}`;
+        } else if (timeIndex !== -1) {
+            time = values[timeIndex];
+        } else if (dateIndex !== -1) {
+            time = values[dateIndex];
+        }
+
+        return { time, value, raw: row };
     }).filter(point => !isNaN(point.value));
   };
 
 
   useEffect(() => {
     if (state.status === 'success' && state.newDataset && state.fileContent) {
-      // Check if we've already processed this successful upload
       if (state.newDataset.id !== lastProcessedId.current) {
         toast({
           title: 'Thành công!',
@@ -145,7 +155,6 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
             onUploadSuccess(state.newDataset, parsedData);
         }
         formRef.current?.reset();
-        // Mark this dataset ID as processed
         lastProcessedId.current = state.newDataset.id;
       }
     } else if (state.status === 'error' && state.message) {
@@ -154,7 +163,6 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         title: 'Lỗi',
         description: state.message,
       });
-      // Reset processed ID on error to allow retries
       lastProcessedId.current = null;
     }
   }, [state, toast, onUploadSuccess]);
@@ -209,10 +217,9 @@ const initialDatasets: Dataset[] = [
   },
 ];
 
-// Dữ liệu giả cho biểu đồ, mỗi key tương ứng với một id bộ dữ liệu
 const initialChartData: ParsedData = {
-  "ds-001": Array.from({ length: 50 }, (_, i) => ({ time: `14:${i < 10 ? '0' : ''}${i}`, value: 150 + Math.sin(i * 0.5) * 10 + Math.random() * 5 })),
-  "ds-004": Array.from({ length: 30 }, (_, i) => ({ time: `Day ${i+1}`, value: 9800 - i * 20 + Math.random() * 50 })),
+  "ds-001": Array.from({ length: 50 }, (_, i) => ({ time: `14:${i < 10 ? '0' : ''}${i}`, value: 150 + Math.sin(i * 0.5) * 10 + Math.random() * 5, raw: '' })),
+  "ds-004": Array.from({ length: 30 }, (_, i) => ({ time: `Day ${i+1}`, value: 9800 - i * 20 + Math.random() * 50, raw: '' })),
 };
 
 const statusDisplay: { [key: string]: string } = {
@@ -420,8 +427,10 @@ export default function DatasetsPage() {
                         <Bar dataKey="value" fill="hsl(var(--primary))" radius={8} />
                         </BarChart>
                     </ChartContainer>
-                    <p className="text-sm text-muted-foreground mt-4">
+                    <p className="text-sm text-muted-foreground mt-4 text-center">
                         Dữ liệu tại: {currentDataPoint.time} ({currentIndex + 1} / {currentChartData.length})
+                        <br/>
+                        <span className="font-mono text-xs">{currentDataPoint.raw}</span>
                     </p>
                     </div>
                 ) : (
@@ -459,3 +468,5 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
+
+    
