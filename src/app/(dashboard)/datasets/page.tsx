@@ -104,18 +104,20 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
 
     const headers = rows.shift()!.split(',').map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
 
-    const findIndex = (possibleNames: string[]) => {
-      return headers.findIndex(h => possibleNames.includes(h));
+    const findIndexFlexible = (possibleNames: string[]) => {
+        return headers.findIndex(header => 
+            possibleNames.some(name => header.includes(name))
+        );
     };
 
-    const closeIndex = findIndex(['close', 'closeprice']);
-    const timeIndex = findIndex(['time', 'date']);
+    const closeIndex = findIndexFlexible(['close', 'last']);
+    const timeIndex = findIndexFlexible(['time', 'date']);
     
     if (closeIndex === -1 || timeIndex === -1) {
         toast({
             variant: 'destructive',
             title: 'Lỗi Phân tích CSV',
-            description: 'Không tìm thấy các cột cần thiết (ví dụ: "Close", "Time", "Date") trong tệp.',
+            description: `Không tìm thấy các cột cần thiết. Cần cột 'Close'/'Last' và 'Time'/'Date'. Tìm thấy: ${headers.join(', ')}`,
         });
         return [];
     }
