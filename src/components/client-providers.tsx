@@ -13,7 +13,8 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (!mounted) {
-    // Trả về null hoặc một spinner tải trang
+    // Trả về null hoặc một spinner tải trang trong khi chờ đợi client-side mount
+    // Điều này ngăn chặn lỗi hydration.
     return null;
   }
 
