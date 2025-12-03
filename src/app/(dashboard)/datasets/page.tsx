@@ -51,7 +51,8 @@ import { useFormStatus } from 'react-dom';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
+import { useTheme } from "next-themes";
 
 
 // --- Data Types ---
@@ -93,6 +94,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   const lastProcessedId = useRef<string | null>(null);
 
   useEffect(() => {
+    // Ensure we only process a successful upload once
     if (state.status === 'success' && state.newDataset && state.parsedData && state.newDataset.id !== lastProcessedId.current) {
         toast({
           title: 'Thành công!',
@@ -100,14 +102,14 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         });
         onUploadSuccess(state.newDataset, state.parsedData);
         formRef.current?.reset();
-        lastProcessedId.current = state.newDataset.id;
+        lastProcessedId.current = state.newDataset.id; // Mark as processed
     } else if (state.status === 'error') {
       toast({
         variant: 'destructive',
         title: 'Lỗi',
         description: state.message,
       });
-      lastProcessedId.current = null;
+      lastProcessedId.current = null; // Reset on error
     }
   }, [state, toast, onUploadSuccess]);
 
@@ -139,37 +141,47 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<IChartApi | null>(null);
   const seriesApiRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (!chartContainerRef.current || data.length === 0) return;
 
+    const isDark = theme === 'dark';
+
+    const chartOptions = {
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: isDark ? '#D1D5DB' : '#1F2937',
+      },
+      grid: {
+        vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
+        horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
+      },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    };
+
     if (!chartApiRef.current) {
-      const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
-        height: 500,
-        layout: {
-          background: { color: 'transparent' },
-          textColor: 'hsl(var(--foreground))',
-        },
-        grid: {
-          vertLines: { color: 'hsl(var(--border))' },
-          horzLines: { color: 'hsl(var(--border))' },
-        },
-        timeScale: {
-          timeVisible: true,
-          secondsVisible: false,
-        },
-      });
-      chartApiRef.current = chart;
-      seriesApiRef.current = chart.addCandlestickSeries({
-        upColor: 'hsl(var(--chart-1))',
-        downColor: 'hsl(var(--chart-2))',
-        borderDownColor: 'hsl(var(--chart-2))',
-        borderUpColor: 'hsl(var(--chart-1))',
-        wickDownColor: 'hsl(var(--chart-2))',
-        wickUpColor: 'hsl(var(--chart-1))',
-      });
+        const chart = createChart(chartContainerRef.current, {
+            ...chartOptions,
+            width: chartContainerRef.current.clientWidth,
+            height: 500,
+        });
+        chartApiRef.current = chart;
+        seriesApiRef.current = chart.addCandlestickSeries({
+            upColor: '#22c55e', // green-500
+            downColor: '#ef4444', // red-500
+            borderDownColor: '#ef4444',
+            borderUpColor: '#22c55e',
+            wickDownColor: '#ef4444',
+            wickUpColor: '#22c55e',
+        });
+    } else {
+        chartApiRef.current.applyOptions(chartOptions);
     }
+    
 
     seriesApiRef.current?.setData(data);
 
@@ -187,7 +199,7 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
       window.removeEventListener('resize', handleResize);
     };
 
-  }, [data]);
+  }, [data, theme]);
   
   useEffect(() => {
     const currentPoint = data[currentIndex];
@@ -196,13 +208,13 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
             {
                 time: currentPoint.time,
                 position: 'aboveBar',
-                color: 'hsl(var(--primary))',
+                color: theme === 'dark' ? '#A78BFA' : '#6D28D9', // primary colors
                 shape: 'arrowDown',
                 text: `Điểm ${currentIndex + 1}`
             }
         ]);
      }
-  }, [currentIndex, data]);
+  }, [currentIndex, data, theme]);
 
 
   return <div ref={chartContainerRef} className="w-full h-[500px]" />;
@@ -226,6 +238,7 @@ export default function DatasetsPage() {
 
   const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
     setDatasets(prev => {
+        // Prevent adding duplicate datasets if the action state is triggered multiple times
         if (prev.find(d => d.id === newDataset.id)) {
             return prev;
         }
