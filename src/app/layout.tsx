@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
-import { Toaster } from "@/components/ui/toaster";
 import { ClientProviders } from '@/components/client-providers';
 
 
@@ -38,7 +37,6 @@ export default function RootLayout({
         <ClientProviders>
           {children}
         </ClientProviders>
-        <Toaster />
       </body>
     </html>
   );
