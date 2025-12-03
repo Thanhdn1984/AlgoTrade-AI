@@ -7,13 +7,13 @@ import { useEffect, useState } from 'react';
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
-  // useEffect only runs on the client, so now we can safely show the UI
+  // useEffect chỉ chạy trên client, vì vậy bây giờ chúng ta có thể hiển thị UI một cách an toàn
   useEffect(() => {
     setMounted(true);
   }, []);
 
   if (!mounted) {
-    // return null or a loading spinner
+    // Trả về null hoặc một spinner tải trang
     return null;
   }
 
