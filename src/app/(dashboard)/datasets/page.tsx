@@ -27,6 +27,9 @@ import {
   MoreHorizontal,
   ThumbsDown,
   ThumbsUp,
+  Circle,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -308,7 +311,7 @@ export default function DatasetsPage() {
               <CardHeader>
                 <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
                 <CardDescription>
-                  Gán nhãn các điểm dữ liệu cho EURUSD_H1_2023.
+                  Dạy AI bằng cách gán nhãn cho dữ liệu của bạn.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -333,16 +336,22 @@ export default function DatasetsPage() {
                     </BarChart>
                   </ChartContainer>
                   <p className="text-sm text-muted-foreground mt-4">
-                    Nến lúc 2023-10-01 14:00
+                    Nến lúc 2023-10-01 14:00 (EURUSD)
                   </p>
                 </div>
               </CardContent>
               <CardFooter className="flex justify-center gap-2">
-                <Button variant="outline" size="icon" className="h-12 w-12 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600">
-                  <ThumbsUp />
+                 <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col">
+                  <ArrowUp className="h-5 w-5" />
+                  <span className="text-xs">Mua</span>
                 </Button>
-                <Button variant="outline" size="icon" className="h-12 w-12 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600">
-                  <ThumbsDown />
+                 <Button variant="outline" size="lg" className="h-12 w-20 flex-col">
+                  <Circle className="h-5 w-5" />
+                  <span className="text-xs">Giữ</span>
+                </Button>
+                <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col">
+                  <ArrowDown className="h-5 w-5" />
+                  <span className="text-xs">Bán</span>
                 </Button>
               </CardFooter>
             </Card>
@@ -352,3 +361,5 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
+
+    
