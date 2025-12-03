@@ -101,10 +101,9 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   const parseCSV = (content: string): ChartDataPoint[] => {
     const rows = content.split('\n').filter(row => row.trim() !== '');
     if (rows.length < 2) return [];
-  
-    // Remove <> and convert to lowercase for flexible matching
+
     const headers = rows.shift()!.split(/\s+|,/).map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
-  
+    
     const findIndexFlexible = (possibleNames: string[]) => {
       return headers.findIndex(header =>
         possibleNames.some(name => header.includes(name))
@@ -125,8 +124,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
     }
   
     return rows.map((row) => {
-        // Handle both comma and space separators by replacing commas with spaces and splitting by whitespace
-        const values = row.trim().split(/\s+|,/).filter(Boolean);
+        const values = row.trim().split(/\s+/).filter(Boolean);
         const value = parseFloat(values[closeIndex]);
         
         let time = `Điểm`;
@@ -145,6 +143,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
 
   useEffect(() => {
     if (state.status === 'success' && state.newDataset && state.fileContent) {
+      // Use an ID ref to prevent processing the same success state multiple times
       if (state.newDataset.id !== lastProcessedId.current) {
         toast({
           title: 'Thành công!',
@@ -155,6 +154,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
             onUploadSuccess(state.newDataset, parsedData);
         }
         formRef.current?.reset();
+        // Mark this success state as processed
         lastProcessedId.current = state.newDataset.id;
       }
     } else if (state.status === 'error' && state.message) {
@@ -163,6 +163,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         title: 'Lỗi',
         description: state.message,
       });
+      // Reset processed ID on error to allow retries
       lastProcessedId.current = null;
     }
   }, [state, toast, onUploadSuccess]);
@@ -193,34 +194,8 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
 
 // --- Main Page Component ---
 
-const initialDatasets: Dataset[] = [
-  {
-    id: "ds-001",
-    name: "EURUSD_H1_2023",
-    status: "Labeled",
-    itemCount: 17800,
-    createdAt: "2023-10-01",
-  },
-  {
-    id: "ds-002",
-    name: "BTCUSD_M5_2024_Q1",
-    status: "Processing",
-    itemCount: 89500,
-    createdAt: "2024-03-15",
-  },
-  {
-    id: "ds-004",
-    name: "NASDAQ_Futures_H4",
-    status: "Labeled",
-    itemCount: 9800,
-    createdAt: "2022-11-30",
-  },
-];
-
-const initialChartData: ParsedData = {
-  "ds-001": Array.from({ length: 50 }, (_, i) => ({ time: `14:${i < 10 ? '0' : ''}${i}`, value: 150 + Math.sin(i * 0.5) * 10 + Math.random() * 5, raw: '' })),
-  "ds-004": Array.from({ length: 30 }, (_, i) => ({ time: `Day ${i+1}`, value: 9800 - i * 20 + Math.random() * 50, raw: '' })),
-};
+const initialDatasets: Dataset[] = [];
+const initialChartData: ParsedData = {};
 
 const statusDisplay: { [key: string]: string } = {
   Labeled: "Đã gán nhãn",
@@ -241,17 +216,31 @@ export default function DatasetsPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const handleAddDataset = (newDataset: Dataset, newParsedData: ChartDataPoint[]) => {
+    // Prevent adding duplicates
     setDatasets(prev => {
-      if (prev.find(d => d.id === newDataset.id)) {
-        return prev;
-      }
-      return [...prev, newDataset];
+        if (prev.find(d => d.id === newDataset.id)) {
+            return prev;
+        }
+        return [...prev, newDataset];
     });
     setParsedData(prev => ({
         ...prev,
         [newDataset.id]: newParsedData,
     }));
   };
+
+  const handleDeleteDataset = (datasetId: string) => {
+    setDatasets(prev => prev.filter(d => d.id !== datasetId));
+    setParsedData(prev => {
+        const newParsedData = { ...prev };
+        delete newParsedData[datasetId];
+        return newParsedData;
+    });
+    if (activeDataset?.id === datasetId) {
+        setActiveDataset(null);
+    }
+  };
+
 
   const currentChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
   const currentDataPoint = currentChartData[currentIndex];
@@ -383,7 +372,10 @@ export default function DatasetsPage() {
                               <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
                               <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive">
+                              <DropdownMenuItem 
+                                className="text-destructive"
+                                onSelect={(e) => { e.preventDefault(); handleDeleteDataset(dataset.id); }}
+                              >
                                 Xóa
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -468,5 +460,3 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
-
-    
