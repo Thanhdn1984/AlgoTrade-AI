@@ -1,3 +1,5 @@
+
+'use client';
 import {
   Card,
   CardContent,
@@ -9,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Cpu, CheckCircle, Clock, Archive } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import type { Model } from "@/lib/types";
+import { useEffect, useState } from "react";
 
 const models: Model[] = [
   {
@@ -51,6 +54,12 @@ const statusIcons = {
 };
 
 export default function ModelsPage() {
+  const [lastUpdated, setLastUpdated] = useState('');
+
+  useEffect(() => {
+    setLastUpdated(new Date().toLocaleDateString());
+  }, []);
+  
   return (
     <div className="space-y-6">
        <div>
@@ -97,7 +106,7 @@ export default function ModelsPage() {
                 </div>
               )}
                <div className="text-xs text-muted-foreground pt-2">
-                 {model.status === 'Training' ? 'Epoch 15/20...' : `Last updated: ${new Date().toLocaleDateString()}`}
+                 {model.status === 'Training' ? 'Epoch 15/20...' : `Last updated: ${lastUpdated}`}
                </div>
             </CardContent>
           </Card>
