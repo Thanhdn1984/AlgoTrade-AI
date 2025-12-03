@@ -23,6 +23,7 @@ import {
   ArrowDownToLine,
   FileUp,
   ListFilter,
+  Loader2,
   MoreHorizontal,
   ThumbsDown,
   ThumbsUp,
@@ -49,6 +50,11 @@ import {
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
+import { useActionState, useEffect, useRef } from "react";
+import { useFormStatus } from "react-dom";
+import { uploadFileAction } from "@/lib/actions";
+import { useToast } from "@/hooks/use-toast";
+
 
 const datasets: Dataset[] = [
   {
@@ -120,6 +126,72 @@ const chartConfig = {
     color: "hsl(var(--chart-5))",
   },
 } satisfies ChartConfig;
+
+
+function UploadButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" className="w-full" variant="outline" disabled={pending}>
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
+        </>
+      ) : (
+        <>
+          <FileUp className="mr-2 h-4 w-4" /> Tải lên
+        </>
+      )}
+    </Button>
+  );
+}
+
+
+function UploadCard() {
+  const initialState = { status: 'idle' as const, message: '' };
+  const [state, formAction] = useActionState(uploadFileAction, initialState);
+  const { toast } = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (state.status === 'success') {
+      toast({
+        title: 'Thành công!',
+        description: state.message,
+      });
+      formRef.current?.reset();
+    } else if (state.status === 'error') {
+      toast({
+        variant: 'destructive',
+        title: 'Lỗi',
+        description: state.message,
+      });
+    }
+  }, [state, toast]);
+
+  return (
+    <Card>
+      <form ref={formRef} action={formAction}>
+        <CardHeader>
+          <CardTitle className="font-headline">Tải lên Dữ liệu</CardTitle>
+          <CardDescription>
+            Tải lên tệp CSV mới để tạo một bộ dữ liệu.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid w-full max-w-sm items-center gap-1.5">
+            <Label htmlFor="data-file">Tệp CSV</Label>
+            <Input id="data-file" name="data-file" type="file" ref={fileInputRef} required accept=".csv" />
+          </div>
+        </CardContent>
+        <CardFooter>
+          <UploadButton />
+        </CardFooter>
+      </form>
+    </Card>
+  );
+}
+
 
 export default function DatasetsPage() {
   return (
@@ -234,25 +306,7 @@ export default function DatasetsPage() {
             </Card>
           </div>
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-headline">Tải lên Dữ liệu</CardTitle>
-                <CardDescription>
-                  Tải lên tệp CSV mới để tạo một bộ dữ liệu.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid w-full max-w-sm items-center gap-1.5">
-                  <Label htmlFor="data-file">Tệp CSV</Label>
-                  <Input id="data-file" type="file" />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button className="w-full" variant="outline">
-                  <FileUp className="mr-2 h-4 w-4" /> Tải lên
-                </Button>
-              </CardFooter>
-            </Card>
+            <UploadCard />
             <Card>
               <CardHeader>
                 <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
