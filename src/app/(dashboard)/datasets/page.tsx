@@ -46,7 +46,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint, ParsedData } from "@/lib/types";
+import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { useActionState } from 'react';
 import { uploadFileAction, trainModelAction, autoLabelAction } from "@/lib/actions";
@@ -59,9 +59,9 @@ import { useFormStatus } from 'react-dom';
 
 
 // --- Annotation Button Component ---
-const AnnotationButton = ({ mode, children, tooltip, activeButton, activeDataset, toggleLabelMode }: { 
-    mode: AnnotationType, 
-    children: React.ReactNode, 
+const AnnotationButton = ({ mode, children, tooltip, activeButton, activeDataset, toggleLabelMode }: {
+    mode: AnnotationType,
+    children: React.ReactNode,
     tooltip: string,
     activeButton: AnnotationType | null,
     activeDataset: Dataset | null,
@@ -332,6 +332,10 @@ CandlestickChart.displayName = 'CandlestickChart';
 
 
 // --- Main Page Component ---
+type ParsedData = {
+  [key: string]: CandlestickChartData[];
+};
+
 const statusDisplay: { [key: string]: string } = {
   Labeled: "Đã gán nhãn",
   Processing: "Đang xử lý",
@@ -706,11 +710,11 @@ export default function DatasetsPage() {
                          <AnnotationButton mode="BOS" tooltip="Phá vỡ cấu trúc (Break of Structure)" {...{activeButton, activeDataset, toggleLabelMode}}>
                             <LineChartIcon className="h-5 w-5" />
                             <span className="text-xs">BOS</span>
-                        </Button>
+                        </AnnotationButton>
                          <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)" {...{activeButton, activeDataset, toggleLabelMode}}>
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
-                        </Button>
+                        </AnnotationButton>
                     </div>
                 </CardFooter>
             </Card>
@@ -719,3 +723,5 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
+
+    
