@@ -30,6 +30,7 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
+  Dot,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,17 +51,17 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
+import { Line, LineChart, CartesianGrid, XAxis, YAxis, ReferenceDot } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
-import { useEffect, useRef, useState, useActionState } from "react";
+import { useEffect, useRef, useState, useActionState, useMemo } from "react";
 import { useFormStatus } from 'react-dom';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 // --- Data Types ---
-type ChartDataPoint = { time: string; value: number; raw: string; };
+type ChartDataPoint = { time: string; value: number; raw: string; index: number; };
 type ParsedData = { [key: string]: ChartDataPoint[] };
 
 
@@ -101,33 +102,35 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   const parseCSV = (content: string): ChartDataPoint[] => {
     const rows = content.split('\n').filter(row => row.trim() !== '');
     if (rows.length < 2) return [];
-
+    
     const headers = rows.shift()!.split(/\s+|,/).map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
     
     const findIndexFlexible = (possibleNames: string[]) => {
-      return headers.findIndex(header =>
-        possibleNames.some(name => header.includes(name))
-      );
+        return headers.findIndex(header =>
+            possibleNames.some(name => header.includes(name))
+        );
     };
-  
+
     const closeIndex = findIndexFlexible(['close', 'last']);
     const dateIndex = findIndexFlexible(['date']);
     const timeIndex = findIndexFlexible(['time']);
-  
+
     if (closeIndex === -1 || (dateIndex === -1 && timeIndex === -1)) {
-      toast({
-        variant: 'destructive',
-        title: 'Lỗi Phân tích CSV',
-        description: `Không tìm thấy các cột cần thiết. Cần cột 'Close'/'Last' và 'Time'/'Date'. Tìm thấy: ${headers.join(', ')}`,
-      });
-      return [];
+        toast({
+            variant: 'destructive',
+            title: 'Lỗi Phân tích CSV',
+            description: `Không tìm thấy các cột cần thiết. Cần cột 'Close'/'Last' và 'Time'/'Date'. Tìm thấy: ${headers.join(', ')}`,
+        });
+        return [];
     }
-  
-    return rows.map((row) => {
+
+    return rows.map((row, index) => {
         const values = row.trim().split(/\s+/).filter(Boolean);
+        if (values.length <= Math.max(closeIndex, dateIndex, timeIndex)) return null;
+        
         const value = parseFloat(values[closeIndex]);
         
-        let time = `Điểm`;
+        let time = `Điểm ${index + 1}`;
         if (dateIndex !== -1 && timeIndex !== -1) {
             time = `${values[dateIndex]} ${values[timeIndex]}`;
         } else if (timeIndex !== -1) {
@@ -136,15 +139,14 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
             time = values[dateIndex];
         }
 
-        return { time, value, raw: row };
-    }).filter(point => !isNaN(point.value));
-  };
+        return { time, value, raw: row, index };
+    }).filter((point): point is ChartDataPoint => point !== null && !isNaN(point.value));
+};
 
 
   useEffect(() => {
-    if (state.status === 'success' && state.newDataset && state.fileContent) {
-      // Use an ID ref to prevent processing the same success state multiple times
-      if (state.newDataset.id !== lastProcessedId.current) {
+    // Prevent processing the same success state multiple times
+    if (state.status === 'success' && state.newDataset && state.fileContent && state.newDataset.id !== lastProcessedId.current) {
         toast({
           title: 'Thành công!',
           description: state.message,
@@ -156,7 +158,6 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         formRef.current?.reset();
         // Mark this success state as processed
         lastProcessedId.current = state.newDataset.id;
-      }
     } else if (state.status === 'error' && state.message) {
       toast({
         variant: 'destructive',
@@ -194,9 +195,6 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
 
 // --- Main Page Component ---
 
-const initialDatasets: Dataset[] = [];
-const initialChartData: ParsedData = {};
-
 const statusDisplay: { [key: string]: string } = {
   Labeled: "Đã gán nhãn",
   Processing: "Đang xử lý",
@@ -206,12 +204,16 @@ const statusDisplay: { [key: string]: string } = {
 const chartConfig = {
   value: {
     label: "Giá trị",
+    color: "hsl(var(--chart-1))",
   },
 } satisfies ChartConfig;
 
+const CHART_WINDOW_SIZE = 50;
+
+
 export default function DatasetsPage() {
-  const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
-  const [parsedData, setParsedData] = useState<ParsedData>(initialChartData);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -242,8 +244,16 @@ export default function DatasetsPage() {
   };
 
 
-  const currentChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
-  const currentDataPoint = currentChartData[currentIndex];
+  const fullChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
+  const currentDataPoint = fullChartData[currentIndex];
+
+  const chartDisplayData = useMemo(() => {
+    if (!activeDataset || !fullChartData.length) return [];
+    const start = Math.max(0, currentIndex - CHART_WINDOW_SIZE / 2);
+    const end = Math.min(fullChartData.length, start + CHART_WINDOW_SIZE);
+    return fullChartData.slice(start, end);
+  }, [activeDataset, fullChartData, currentIndex]);
+
 
   const handleSetDataset = (dataset: Dataset) => {
     if (dataset.status !== 'Processing') {
@@ -399,32 +409,60 @@ export default function DatasetsPage() {
               </CardHeader>
               <CardContent>
                 {activeDataset && currentDataPoint ? (
-                    <div className="flex flex-col items-center">
-                    <ChartContainer
+                  <div className="flex flex-col items-center">
+                     <ChartContainer
                         config={chartConfig}
-                        className="mx-auto aspect-square h-[150px] w-full"
+                        className="w-full h-48"
                     >
-                        <BarChart accessibilityLayer data={[currentDataPoint]}>
-                        <CartesianGrid vertical={false} />
-                        <XAxis
-                            dataKey="time"
-                            tickLine={false}
-                            tickMargin={10}
-                            axisLine={false}
-                        />
-                        <ChartTooltip
-                            cursor={false}
-                            content={<ChartTooltipContent hideLabel />}
-                        />
-                        <Bar dataKey="value" fill="hsl(var(--primary))" radius={8} />
-                        </BarChart>
+                        <LineChart
+                            data={chartDisplayData}
+                             margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                             <XAxis 
+                                dataKey="time" 
+                                tick={false}
+                                axisLine={false}
+                             />
+                            <YAxis 
+                                domain={['dataMin', 'dataMax']}
+                                tickLine={false}
+                                axisLine={false}
+                                tickMargin={5}
+                                width={60}
+                            />
+                            <ChartTooltip 
+                                cursor={{stroke: 'hsl(var(--foreground))', strokeWidth: 1, strokeDasharray: "3 3"}}
+                                content={<ChartTooltipContent indicator="dot" />} 
+                            />
+                            <Line 
+                                type="monotone" 
+                                dataKey="value" 
+                                stroke="hsl(var(--primary))" 
+                                strokeWidth={2} 
+                                dot={false}
+                            />
+                            {currentDataPoint && (
+                                <ReferenceDot 
+                                    x={currentDataPoint.time} 
+                                    y={currentDataPoint.value} 
+                                    r={5} 
+                                    fill="hsl(var(--primary))" 
+                                    stroke="hsl(var(--background))" 
+                                    strokeWidth={2} 
+                                />
+                            )}
+                        </LineChart>
                     </ChartContainer>
-                    <p className="text-sm text-muted-foreground mt-4 text-center">
-                        Dữ liệu tại: {currentDataPoint.time} ({currentIndex + 1} / {currentChartData.length})
-                        <br/>
-                        <span className="font-mono text-xs">{currentDataPoint.raw}</span>
-                    </p>
+                    <div className="text-sm text-muted-foreground mt-2 text-center">
+                        <p>
+                          Điểm {currentIndex + 1} / {fullChartData.length}
+                        </p>
+                        <p className="font-mono text-xs truncate" title={currentDataPoint.raw}>
+                            {currentDataPoint.raw}
+                        </p>
                     </div>
+                  </div>
                 ) : (
                     <div className="flex items-center justify-center h-48 text-center text-muted-foreground border-2 border-dashed rounded-lg">
                         <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
@@ -449,7 +487,7 @@ export default function DatasetsPage() {
                         <span className="text-xs">Bán</span>
                     </Button>
                  </div>
-                 <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= currentChartData.length - 1}>
+                 <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= fullChartData.length - 1}>
                     <ChevronRight className="h-4 w-4" />
                  </Button>
               </CardFooter>
