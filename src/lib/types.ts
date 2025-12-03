@@ -35,6 +35,10 @@ export type CandlestickChartData = {
     index: number;
 };
 
+export type ParsedData = {
+  [key: string]: CandlestickChartData[];
+};
+
 export type LabeledPoint = SeriesMarker<UTCTimestamp> & {
     id: string;
     time: UTCTimestamp;

@@ -46,7 +46,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint } from "@/lib/types";
+import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint, ParsedData } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { useActionState } from 'react';
 import { uploadFileAction, trainModelAction, autoLabelAction } from "@/lib/actions";
@@ -255,12 +255,12 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
 }
 
 // --- Chart Component ---
-interface CandlestickChartProps {
+type CandlestickChartProps = {
   data: CandlestickChartData[];
   markers: SeriesMarker<UTCTimestamp>[];
   onChartClick: (params: MouseEventParams) => void;
   onCrosshairMove: (params: MouseEventParams) => void;
-}
+};
 
 const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }: CandlestickChartProps) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
