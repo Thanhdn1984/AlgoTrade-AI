@@ -61,7 +61,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 type ParsedData = { [key: string]: CandlestickChartData[] };
 type LabelMarker = SeriesMarker<UTCTimestamp>;
 type LabeledPoints = { [key: string]: LabelMarker[] };
-type PriceLines = { [key: string]: IPriceLine[] };
 
 
 // --- Components for Upload ---
@@ -354,14 +353,19 @@ export default function DatasetsPage() {
   const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData | null>(null);
+  
+  // State for annotations
   const [labeledPoints, setLabeledPoints] = useState<LabeledPoints>({});
   const [priceLines, setPriceLines] = useState<{ [key: string]: CustomPriceLineOptions[] }>({});
+  
+  // State for interaction mode
   const [activeLabelMode, setActiveLabelMode] = useState<AnnotationType | null>(null);
-  const [fvgTempLine, setFvgTempLine] = useState<IPriceLine | null>(null);
   const [fvgFirstClick, setFvgFirstClick] = useState<{ price: number; time: UTCTimestamp } | null>(null);
-
+  
+  // Refs for chart objects
   const chartApiRef = useRef<{ chart: IChartApi | null; series: ISeriesApi<'Candlestick'> | null }>({ chart: null, series: null });
   const priceLineRefs = useRef<{ [key: string]: IPriceLine[] }>({});
+  const fvgTempLine = useRef<IPriceLine | null>(null);
 
 
   const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
@@ -466,10 +470,12 @@ export default function DatasetsPage() {
         }));
         setActiveLabelMode(null);
       } else if (activeLabelMode === 'FVG') {
+        const series = chartApiRef.current.series;
+        if (!series) return;
         if (!fvgFirstClick) {
             // First click: store position and draw a temporary line
             setFvgFirstClick({ price, time });
-            const tempLine = chartApiRef.current.series?.createPriceLine({
+            const tempLine = series.createPriceLine({
                 price,
                 color: '#8b5cf6',
                 lineWidth: 2,
@@ -477,7 +483,7 @@ export default function DatasetsPage() {
                 axisLabelVisible: true,
                 title: 'FVG Start'
             });
-            if (tempLine) setFvgTempLine(tempLine);
+            fvgTempLine.current = tempLine;
         } else {
             // Second click: create the FVG region
             const top = Math.max(fvgFirstClick.price, price);
@@ -500,25 +506,26 @@ export default function DatasetsPage() {
             }));
 
             // Clean up
-            if (fvgTempLine) chartApiRef.current.series?.removePriceLine(fvgTempLine);
-            setFvgTempLine(null);
+            if (fvgTempLine.current) series.removePriceLine(fvgTempLine.current);
+            fvgTempLine.current = null;
             setFvgFirstClick(null);
             setActiveLabelMode(null);
         }
       }
-  }, [activeLabelMode, activeDataset, fvgFirstClick, fvgTempLine]);
+  }, [activeLabelMode, activeDataset, fvgFirstClick]);
 
 
   const handleSetDataset = (dataset: Dataset) => {
     if (dataset.status !== 'Processing') {
+        const series = chartApiRef.current.series;
+        if(fvgTempLine.current && series){
+             series.removePriceLine(fvgTempLine.current);
+        }
+        fvgTempLine.current = null;
         setActiveDataset(dataset);
         setHoveredDataPoint(null);
         setActiveLabelMode(null);
         setFvgFirstClick(null);
-        if (fvgTempLine && chartApiRef.current.series) {
-            chartApiRef.current.series.removePriceLine(fvgTempLine);
-            setFvgTempLine(null);
-        }
     }
   }
   
@@ -539,7 +546,7 @@ export default function DatasetsPage() {
 
     currentLineOptions.forEach(options => {
         if (options.annotationType === 'FVG' && options.price2 !== undefined) {
-             // Draw FVG as a region
+             // Draw FVG as a region by drawing two lines. A true region would require more complex logic.
             const topLine = series.createPriceLine({
                 price: options.price,
                 color: '#8b5cf6',
@@ -554,8 +561,7 @@ export default function DatasetsPage() {
                 lineStyle: 2,
                 axisLabelVisible: false,
             });
-            // This is a simplified way to create an area, real implementation might need a custom plugin
-            // For now, we'll draw two lines and store them.
+            // We don't have a true 'fill' but can create an area with plugins. For now, two lines represent the zone.
             newLines.push(topLine, bottomLine);
 
         } else if (options.annotationType === 'BOS' || options.annotationType === 'CHOCH') {
@@ -570,23 +576,24 @@ export default function DatasetsPage() {
 
 
   const toggleLabelMode = (mode: AnnotationType) => {
+    const series = chartApiRef.current.series;
     // If we're already in a mode, and click it again, cancel it.
     if(activeLabelMode === mode) {
         setActiveLabelMode(null);
-        if (fvgTempLine && chartApiRef.current.series) {
-            chartApiRef.current.series.removePriceLine(fvgTempLine);
+        if (fvgTempLine.current && series) {
+            series.removePriceLine(fvgTempLine.current);
         }
-        setFvgTempLine(null);
+        fvgTempLine.current = null;
         setFvgFirstClick(null);
         return;
     }
     
     // If switching from FVG drawing mid-way, clean up.
     if(fvgFirstClick) {
-        if (fvgTempLine && chartApiRef.current.series) {
-            chartApiRef.current.series.removePriceLine(fvgTempLine);
+        if (fvgTempLine.current && series) {
+            series.removePriceLine(fvgTempLine.current);
         }
-        setFvgTempLine(null);
+        fvgTempLine.current = null;
         setFvgFirstClick(null);
     }
     
