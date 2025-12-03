@@ -510,7 +510,7 @@ export default function DatasetsPage() {
                      <div className="flex items-center justify-center gap-4 h-6">
                         {hoveredDataPoint ? (
                             <div className="font-mono text-xs text-muted-foreground flex gap-4">
-                                <span>Time: {new Date(hoveredDataPoint.time * 1000).toLocaleString('vi-VN')}</span>
+                                <span>Time: {new Date((hoveredDataPoint.time as number) * 1000).toLocaleString('vi-VN')}</span>
                                 <span>O: {hoveredDataPoint.open.toFixed(2)}</span>
                                 <span>H: {hoveredDataPoint.high.toFixed(2)}</span>
                                 <span>L: {hoveredDataPoint.low.toFixed(2)}</span>
