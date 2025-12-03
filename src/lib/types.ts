@@ -1,4 +1,4 @@
-import type { UTCTimestamp } from 'lightweight-charts';
+import type { UTCTimestamp, PriceLineOptions } from 'lightweight-charts';
 
 export type TradeSignal = {
   symbol: string;
@@ -36,3 +36,10 @@ export type CandlestickChartData = {
 };
 
 export type LabelType = 'BUY' | 'SELL' | 'HOLD';
+export type LineLabelType = 'BOS' | 'CHOCH' | 'FVG';
+export type AnnotationType = LabelType | LineLabelType;
+
+
+export interface CustomPriceLineOptions extends PriceLineOptions {
+    annotationType: LineLabelType;
+}

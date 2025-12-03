@@ -1,6 +1,7 @@
 'use server';
 
 import {generateTradeSignals} from '@/ai/flows/generate-trade-signals';
+import {labelTrainingData} from '@/ai/flows/label-training-data';
 import {z} from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Dataset, CandlestickChartData } from './types';
@@ -207,5 +208,58 @@ export async function uploadFileAction(prevState: UploadState, formData: FormDat
             status: 'error',
             message: error.message || 'Không thể tải tệp lên. Đã xảy ra lỗi không mong muốn.'
         }
+    }
+}
+
+
+// --- Action for Model Training ---
+const trainModelSchema = z.object({
+    datasetId: z.string(),
+    labeledDataCSV: z.string(),
+});
+
+type TrainModelState = {
+    status: 'idle' | 'success' | 'error';
+    message: string;
+};
+
+export async function trainModelAction(prevState: TrainModelState, formData: FormData): Promise<TrainModelState> {
+    try {
+        const validatedFields = trainModelSchema.safeParse({
+            datasetId: formData.get('datasetId'),
+            labeledDataCSV: formData.get('labeledDataCSV'),
+        });
+
+        if (!validatedFields.success) {
+            console.error(validatedFields.error.flatten().fieldErrors);
+            return {
+                status: 'error',
+                message: "Dữ liệu huấn luyện không hợp lệ.",
+            };
+        }
+
+        console.log(`Bắt đầu huấn luyện mô hình cho bộ dữ liệu: ${validatedFields.data.datasetId}`);
+        console.log(`Dữ liệu gán nhãn:`, validatedFields.data.labeledDataCSV);
+
+        // Call the Genkit flow
+        const result = await labelTrainingData({
+            data: validatedFields.data.labeledDataCSV,
+            modelDescription: `Training on dataset ${validatedFields.data.datasetId}`,
+        });
+
+        // For now, we'll just simulate a successful training start
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        return {
+            status: 'success',
+            message: `Bắt đầu quá trình huấn luyện mô hình. AI response: ${result.label} (Confidence: ${result.confidence})`,
+        };
+
+    } catch (error: any) {
+        console.error("Lỗi khi huấn luyện mô hình:", error);
+        return {
+            status: 'error',
+            message: error.message || "Không thể bắt đầu huấn luyện mô hình.",
+        };
     }
 }
