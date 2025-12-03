@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
-import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from "@/components/ui/toaster";
+import { ClientProviders } from '@/components/client-providers';
 
 
 const fontBody = Inter({ 
@@ -35,15 +35,10 @@ export default function RootLayout({
           fontHeadline.variable
         )}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ClientProviders>
           {children}
           <Toaster />
-        </ThemeProvider>
+        </ClientProviders>
       </body>
     </html>
   );
