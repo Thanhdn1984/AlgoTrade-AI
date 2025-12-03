@@ -50,8 +50,8 @@ import {
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
-import { useEffect, useRef, useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import { useEffect, useRef, useState } from "react";
+import { useFormState, useFormStatus } from "react-dom";
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 
@@ -128,20 +128,36 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 
+function UploadButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" className="w-full" variant="outline" disabled={pending}>
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
+        </>
+      ) : (
+        <>
+          <FileUp className="mr-2 h-4 w-4" /> Tải lên
+        </>
+      )}
+    </Button>
+  );
+}
+
 function UploadCard() {
-  const initialState = { status: 'idle' as const, message: '' };
-  const [state, formAction] = useActionState(uploadFileAction, initialState);
+  const [state, formAction] = useFormState(uploadFileAction, { status: 'idle' as const, message: '' });
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (state.status === 'success') {
+    if (state.status === 'success' && state.message) {
       toast({
         title: 'Thành công!',
         description: state.message,
       });
       formRef.current?.reset();
-    } else if (state.status === 'error') {
+    } else if (state.status === 'error' && state.message) {
       toast({
         variant: 'destructive',
         title: 'Lỗi',
@@ -149,23 +165,6 @@ function UploadCard() {
       });
     }
   }, [state, toast]);
-
-  function UploadButton() {
-    const { pending } = useFormStatus();
-    return (
-      <Button type="submit" className="w-full" variant="outline" disabled={pending}>
-        {pending ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
-          </>
-        ) : (
-          <>
-            <FileUp className="mr-2 h-4 w-4" /> Tải lên
-          </>
-        )}
-      </Button>
-    );
-  }
 
   return (
     <Card>
