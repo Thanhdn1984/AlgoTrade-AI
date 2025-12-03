@@ -4,7 +4,6 @@ import './globals.css';
 import { cn } from '@/lib/utils';
 import { ClientProviders } from '@/components/client-providers';
 
-
 const fontBody = Inter({ 
   subsets: ['latin'],
   variable: '--font-body',

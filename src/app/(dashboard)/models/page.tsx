@@ -92,14 +92,35 @@ function TrainingProgress({ model }: { model: Model }) {
   );
 }
 
-
-export default function ModelsPage() {
+function DeployedModelInfo({ model }: { model: Model }) {
   const [lastUpdated, setLastUpdated] = useState('');
 
   useEffect(() => {
+    // This now runs only on the client, preventing hydration mismatch.
     setLastUpdated(new Date().toLocaleDateString('vi-VN'));
   }, []);
-  
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <p className="text-muted-foreground">Độ chính xác</p>
+          <p className="font-semibold text-lg">{model.accuracy}%</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Điểm F1</p>
+          <p className="font-semibold text-lg">{model.f1Score || "K/C"}</p>
+        </div>
+      </div>
+      <div className="text-xs text-muted-foreground pt-2">
+        Cập nhật lần cuối: {lastUpdated || '...'}
+      </div>
+    </>
+  );
+}
+
+
+export default function ModelsPage() {
   return (
     <div className="space-y-6">
        <div>
@@ -128,21 +149,7 @@ export default function ModelsPage() {
               {model.status === 'Training' ? (
                 <TrainingProgress model={model} />
               ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Độ chính xác</p>
-                      <p className="font-semibold text-lg">{model.accuracy}%</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Điểm F1</p>
-                      <p className="font-semibold text-lg">{model.f1Score || "K/C"}</p>
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground pt-2">
-                    Cập nhật lần cuối: {lastUpdated}
-                  </div>
-                </>
+                <DeployedModelInfo model={model} />
               )}
             </CardContent>
           </Card>
