@@ -148,6 +148,8 @@ export default function ModelsPage() {
             <CardContent className="space-y-4">
               {model.status === 'Training' ? (
                 <TrainingProgress model={model} />
+              ) : model.status === 'Archived' ? (
+                 <div className="text-sm text-muted-foreground">Mô hình này đã được lưu trữ.</div>
               ) : (
                 <DeployedModelInfo model={model} />
               )}
