@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowDownToLine,
   FileUp,
-  ListFilter,
   Loader2,
   MoreHorizontal,
   Circle,
@@ -46,13 +45,13 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Dataset, CandlestickChartData, AnnotationType, LabelType, LineLabelType, CustomPriceLineOptions } from "@/lib/types";
+import type { Dataset, CandlestickChartData, AnnotationType, CustomPriceLineOptions } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useActionState } from 'react';
 import { uploadFileAction, trainModelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker, type IPriceLine, type PriceLineOptions } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker, type IPriceLine } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -364,7 +363,7 @@ export default function DatasetsPage() {
   
   // Refs for chart objects
   const chartApiRef = useRef<{ chart: IChartApi | null; series: ISeriesApi<'Candlestick'> | null }>({ chart: null, series: null });
-  const priceLineRefs = useRef<{ [key: string]: IPriceLine[] }>({});
+  const priceLineRefs = useRef<{ [id: string]: IPriceLine[] }>({});
   const fvgTempLine = useRef<IPriceLine | null>(null);
 
 
@@ -374,8 +373,12 @@ export default function DatasetsPage() {
         return [...prev, newDataset];
     });
     setParsedData(prev => ({ ...prev, [newDataset.id]: newParsedData }));
-    setLabeledPoints(prev => ({ ...prev, [newDataset.id]: [] }));
-    setPriceLines(prev => ({...prev, [newDataset.id]: []}));
+    if (!labeledPoints[newDataset.id]) {
+      setLabeledPoints(prev => ({ ...prev, [newDataset.id]: [] }));
+    }
+    if (!priceLines[newDataset.id]) {
+      setPriceLines(prev => ({...prev, [newDataset.id]: []}));
+    }
   };
 
   const handleDeleteDataset = (datasetId: string) => {
@@ -395,6 +398,7 @@ export default function DatasetsPage() {
         delete newPriceLines[datasetId];
         return newPriceLines;
     });
+    
     // Clear refs
     const series = chartApiRef.current.series;
     if (priceLineRefs.current[datasetId] && series) {
@@ -441,11 +445,12 @@ export default function DatasetsPage() {
                 newMarker = { time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' };
                 break;
             case 'HOLD':
-                newMarker = { time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5 };
+                newMarker = { time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5, text: 'Hold' };
                 break;
         }
         setLabeledPoints(prev => {
             const currentPoints = prev[activeDataset.id] || [];
+            // Remove existing marker at the same time to allow replacement
             const otherPoints = currentPoints.filter(p => p.time !== time);
             const newPoints = [...otherPoints, newMarker];
             newPoints.sort((a, b) => (a.time as number) - (b.time as number));
@@ -475,6 +480,9 @@ export default function DatasetsPage() {
         if (!fvgFirstClick) {
             // First click: store position and draw a temporary line
             setFvgFirstClick({ price, time });
+            if (fvgTempLine.current) {
+                series.removePriceLine(fvgTempLine.current);
+            }
             const tempLine = series.createPriceLine({
                 price,
                 color: '#8b5cf6',
@@ -494,9 +502,9 @@ export default function DatasetsPage() {
                 price2: bottom,
                 color: 'rgba(139, 92, 246, 0.2)', // FVG area color
                 lineWidth: 2,
-                lineStyle: 0, // Solid
+                lineStyle: 0, // Solid - not really used for region
                 axisLabelVisible: true,
-                title: 'FVG',
+                title: `FVG-${(Math.random() * 1000).toFixed(0)}`,
                 annotationType: 'FVG',
                 time: fvgFirstClick.time,
             };
@@ -534,34 +542,37 @@ export default function DatasetsPage() {
     const series = chartApiRef.current.series;
     if (!series || !activeDataset) return;
     
-    // Clear all existing price lines from the chart to prevent duplicates
+    // Clear all existing price lines from the chart for the active dataset to prevent duplicates
     if (priceLineRefs.current[activeDataset.id]) {
       priceLineRefs.current[activeDataset.id].forEach(line => series.removePriceLine(line));
     }
     priceLineRefs.current[activeDataset.id] = [];
 
-    // Redraw all lines/areas from state
+    // Redraw all lines/areas from state for the current active dataset
     const currentLineOptions = priceLines[activeDataset.id] || [];
     const newLines: IPriceLine[] = [];
 
     currentLineOptions.forEach(options => {
         if (options.annotationType === 'FVG' && options.price2 !== undefined) {
-             // Draw FVG as a region by drawing two lines. A true region would require more complex logic.
+             // Draw FVG as two lines representing a region. 
             const topLine = series.createPriceLine({
                 price: options.price,
                 color: '#8b5cf6',
                 lineWidth: 1,
                 lineStyle: 2,
-                axisLabelVisible: false,
+                axisLabelVisible: true,
+                title: "FVG High",
             });
              const bottomLine = series.createPriceLine({
                 price: options.price2,
                 color: '#8b5cf6',
                 lineWidth: 1,
                 lineStyle: 2,
-                axisLabelVisible: false,
+                axisLabelVisible: true,
+                title: "FVG Low",
             });
-            // We don't have a true 'fill' but can create an area with plugins. For now, two lines represent the zone.
+            // TODO: A true 'fill' requires a plugin or more complex rendering logic. 
+            // For now, two lines represent the zone.
             newLines.push(topLine, bottomLine);
 
         } else if (options.annotationType === 'BOS' || options.annotationType === 'CHOCH') {
@@ -571,6 +582,14 @@ export default function DatasetsPage() {
     });
 
     priceLineRefs.current[activeDataset.id] = newLines;
+    
+    // This cleanup function will run when the component unmounts or activeDataset changes
+    return () => {
+        if (series && priceLineRefs.current[activeDataset.id]) {
+            priceLineRefs.current[activeDataset.id].forEach(line => series.removePriceLine(line));
+            priceLineRefs.current[activeDataset.id] = [];
+        }
+    };
 
   }, [activeDataset, priceLines]);
 
@@ -582,8 +601,8 @@ export default function DatasetsPage() {
         setActiveLabelMode(null);
         if (fvgTempLine.current && series) {
             series.removePriceLine(fvgTempLine.current);
+            fvgTempLine.current = null;
         }
-        fvgTempLine.current = null;
         setFvgFirstClick(null);
         return;
     }
@@ -592,8 +611,8 @@ export default function DatasetsPage() {
     if(fvgFirstClick) {
         if (fvgTempLine.current && series) {
             series.removePriceLine(fvgTempLine.current);
+            fvgTempLine.current = null;
         }
-        fvgTempLine.current = null;
         setFvgFirstClick(null);
     }
     
@@ -712,7 +731,7 @@ export default function DatasetsPage() {
                                     : "outline"
                                 }
                               >
-                                {statusDisplay[dataset.status]}
+                                {statusDisplay[dataset.status] || dataset.status}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
