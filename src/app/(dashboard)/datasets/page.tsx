@@ -243,24 +243,29 @@ const statusDisplay: { [key: string]: string } = {
 
 
 export default function DatasetsPage() {
+  // Global state
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
-  const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData | null>(null);
   
-  // State for annotations
+  // Annotation state
   const [labeledPoints, setLabeledPoints] = useState<LabeledPoints>({});
   const [priceLines, setPriceLines] = useState<{ [key: string]: CustomPriceLineOptions[] }>({});
   
-  // State for interaction mode
-  const [activeLabelMode, setActiveLabelMode] = useState<AnnotationType | null>(null);
-  const [fvgFirstClick, setFvgFirstClick] = useState<{ price: number; time: UTCTimestamp } | null>(null);
-  
-  // Chart refs
+  // UI State
+  const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData | null>(null);
+  const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
+
+  // Interaction State (managed with refs to prevent re-renders)
+  const activeLabelModeRef = useRef<AnnotationType | null>(null);
+  const fvgFirstClickRef = useRef<{ price: number; time: UTCTimestamp } | null>(null);
+
+  // Chart instance refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartApiRef = useRef<{ chart: IChartApi | null; series: ISeriesApi<'Candlestick'> | null }>({ chart: null, series: null });
-  const priceLineRefs = useRef<{ [id: string]: IPriceLine[] }>({});
-  const fvgTempLine = useRef<IPriceLine | null>(null);
+  const chartApiRef = useRef<IChartApi | null>(null);
+  const seriesApiRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const priceLineRefs = useRef<Map<string, IPriceLine>>(new Map());
+  const fvgTempLineRef = useRef<IPriceLine | null>(null);
   
   const { theme } = useTheme();
 
@@ -295,122 +300,169 @@ export default function DatasetsPage() {
         delete newPriceLines[datasetId];
         return newPriceLines;
     });
-    
-    const series = chartApiRef.current.series;
-    if (priceLineRefs.current[datasetId] && series) {
-        priceLineRefs.current[datasetId].forEach(line => series.removePriceLine(line));
-    }
-    delete priceLineRefs.current[datasetId];
 
     if (activeDataset?.id === datasetId) {
         setActiveDataset(null);
     }
   };
 
+  const handleSetDataset = (dataset: Dataset) => {
+    if (dataset.status === 'Processing' || dataset.id === activeDataset?.id) return;
+    
+    // Reset interaction state when switching datasets
+    if (fvgTempLineRef.current && seriesApiRef.current) {
+        seriesApiRef.current.removePriceLine(fvgTempLineRef.current);
+    }
+    fvgTempLineRef.current = null;
+    fvgFirstClickRef.current = null;
+    activeLabelModeRef.current = null;
+    setActiveButton(null);
+
+    setActiveDataset(dataset);
+    setHoveredDataPoint(null);
+  }
+
   const handleCrosshairMove = useCallback((param: MouseEventParams<'Candlestick'>) => {
-    if (!param.point || !param.seriesData.size) {
+    if (!param.point || !param.seriesData || !param.seriesData.size) {
         setHoveredDataPoint(null);
         return;
     }
+    // Accessing the map correctly
     const data = param.seriesData.values().next().value as CandlestickChartData;
     const price = param.panePrices?.[0];
-    setHoveredDataPoint({...data, price});
+    if (data) {
+        setHoveredDataPoint({...data, price});
+    }
   }, []);
 
   const handleChartClick = useCallback((param: MouseEventParams<'Candlestick'>) => {
-    setActiveLabelMode(currentMode => {
-        if (!activeDataset || !currentMode || !param.point || !param.seriesData.size) return currentMode;
+    const currentMode = activeLabelModeRef.current;
+    if (!currentMode || !param.point || !param.seriesData || !param.seriesData.size) {
+        return;
+    }
+    
+    const dataPoint = param.seriesData.values().next().value as CandlestickChartData;
+    if (!dataPoint || !param.panePrices || param.panePrices.length === 0) {
+        return;
+    }
+    const price = param.panePrices[0];
+    const time = dataPoint.time;
 
-        const dataPoint = param.seriesData.values().next().value as CandlestickChartData;
-        if (!param.panePrices || param.panePrices.length === 0 || !dataPoint) return currentMode;
+    // --- Handle Point Markers ---
+    if (currentMode === 'BUY' || currentMode === 'SELL' || currentMode === 'HOLD') {
+        const newMarker: LabelMarker = currentMode === 'BUY'
+            ? { time, position: 'belowBar', color: '#22c55e', shape: 'arrowUp', text: 'Buy' }
+            : currentMode === 'SELL'
+            ? { time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' }
+            : { time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5, text: 'Hold' };
 
-        const price = param.panePrices[0];
-        const time = dataPoint.time;
+        setLabeledPoints(prev => {
+            const currentDatasetId = activeDataset?.id;
+            if (!currentDatasetId) return prev;
+            const currentPoints = prev[currentDatasetId] || [];
+            // Remove any existing marker at the same timestamp before adding the new one
+            const otherPoints = currentPoints.filter(p => p.time !== time);
+            const newPoints = [...otherPoints, newMarker];
+            newPoints.sort((a, b) => (a.time as number) - (b.time as number));
+            return { ...prev, [currentDatasetId]: newPoints };
+        });
+        
+        activeLabelModeRef.current = null;
+        setActiveButton(null);
+    }
+    // --- Handle Line Markers ---
+    else if (currentMode === 'BOS' || currentMode === 'CHOCH') {
+        const lineOptions: CustomPriceLineOptions = {
+            price,
+            color: currentMode === 'BOS' ? '#3b82f6' : '#f97316',
+            lineWidth: 2,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: `${currentMode}-${(Math.random() * 1000).toFixed(0)}`,
+            annotationType: currentMode,
+            time: time, // Although not used for drawing, good to store context
+        };
 
-        if (!time) return currentMode;
-
-        if (currentMode === 'BUY' || currentMode === 'SELL' || currentMode === 'HOLD') {
-            let newMarker: LabelMarker;
-            switch (currentMode) {
-                case 'BUY':
-                    newMarker = { time, position: 'belowBar', color: '#22c55e', shape: 'arrowUp', text: 'Buy' };
-                    break;
-                case 'SELL':
-                    newMarker = { time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' };
-                    break;
-                case 'HOLD':
-                    newMarker = { time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5, text: 'Hold' };
-                    break;
-            }
-            setLabeledPoints(prev => {
-                const currentPoints = prev[activeDataset.id] || [];
-                const otherPoints = currentPoints.filter(p => p.time !== time);
-                const newPoints = [...otherPoints, newMarker];
-                newPoints.sort((a, b) => (a.time as number) - (b.time as number));
-                return { ...prev, [activeDataset.id]: newPoints };
-            });
-            return null;
-
-        } else if (currentMode === 'BOS' || currentMode === 'CHOCH') {
-            const lineOptions: CustomPriceLineOptions = {
-                price,
-                color: currentMode === 'BOS' ? '#3b82f6' : '#f97316',
-                lineWidth: 2,
-                lineStyle: 2, // Dashed
-                axisLabelVisible: true,
-                title: currentMode,
-                annotationType: currentMode,
-                time: time,
-            };
-            setPriceLines(prev => ({
+        setPriceLines(prev => {
+            const currentDatasetId = activeDataset?.id;
+            if (!currentDatasetId) return prev;
+            return {
                 ...prev,
-                [activeDataset.id]: [...(prev[activeDataset.id] || []), lineOptions]
-            }));
-            return null;
-        } else if (currentMode === 'FVG') {
-            const series = chartApiRef.current.series;
-            if (!series) return currentMode;
+                [currentDatasetId]: [...(prev[currentDatasetId] || []), lineOptions]
+            };
+        });
 
-            setFvgFirstClick(prevClick => {
-                if (!prevClick) {
-                    if (fvgTempLine.current) series.removePriceLine(fvgTempLine.current);
-                    const tempLine = series.createPriceLine({ price, color: '#8b5cf6', lineWidth: 2, lineStyle: 3, axisLabelVisible: true, title: 'FVG Start' });
-                    fvgTempLine.current = tempLine;
-                    return { price, time };
-                } else {
-                    const top = Math.max(prevClick.price, price);
-                    const bottom = Math.min(prevClick.price, price);
-                    const fvgLineOptions: CustomPriceLineOptions = {
-                        price: top, price2: bottom, color: 'rgba(139, 92, 246, 0.2)', lineWidth: 2, lineStyle: 0,
-                        axisLabelVisible: true, title: `FVG-${(Math.random() * 1000).toFixed(0)}`, annotationType: 'FVG', time: prevClick.time,
-                    };
-                    setPriceLines(prevLines => ({ ...prevLines, [activeDataset.id]: [...(prevLines[activeDataset.id] || []), fvgLineOptions] }));
-                    if (fvgTempLine.current) series.removePriceLine(fvgTempLine.current);
-                    fvgTempLine.current = null;
-                    return null;
-                }
+        activeLabelModeRef.current = null;
+        setActiveButton(null);
+    }
+    // --- Handle FVG Area ---
+    else if (currentMode === 'FVG') {
+        const series = seriesApiRef.current;
+        if (!series) return;
+
+        if (!fvgFirstClickRef.current) {
+            // First click: set start point and draw a temporary line
+            fvgFirstClickRef.current = { price, time };
+            if (fvgTempLineRef.current) {
+                series.removePriceLine(fvgTempLineRef.current);
+            }
+            const tempLine = series.createPriceLine({ price, color: '#8b5cf6', lineWidth: 2, lineStyle: 3, axisLabelVisible: true, title: 'FVG Start' });
+            fvgTempLineRef.current = tempLine;
+        } else {
+            // Second click: complete the FVG
+            const top = Math.max(fvgFirstClickRef.current.price, price);
+            const bottom = Math.min(fvgFirstClickRef.current.price, price);
+            const fvgLineOptions: CustomPriceLineOptions = {
+                price: top,
+                price2: bottom,
+                color: 'rgba(139, 92, 246, 0.2)',
+                lineWidth: 1,
+                lineStyle: 0,
+                axisLabelVisible: false,
+                title: `FVG-${(Math.random() * 1000).toFixed(0)}`,
+                annotationType: 'FVG',
+                time: fvgFirstClickRef.current.time,
+            };
+            
+            setPriceLines(prev => {
+                const currentDatasetId = activeDataset?.id;
+                if (!currentDatasetId) return prev;
+                return { ...prev, [currentDatasetId]: [...(prev[currentDatasetId] || []), fvgLineOptions] };
             });
-            // If fvgFirstClick was not null, we just completed the FVG, so exit the mode.
-            if(fvgFirstClick) return null;
-        }
-        return currentMode;
-    });
-}, [activeDataset, fvgFirstClick]);
 
-  const handleSetDataset = (dataset: Dataset) => {
-    if (dataset.status !== 'Processing') {
-        const series = chartApiRef.current.series;
-        if(fvgTempLine.current && series){
-             series.removePriceLine(fvgTempLine.current);
+            // Cleanup
+            if (fvgTempLineRef.current) {
+                series.removePriceLine(fvgTempLineRef.current);
+            }
+            fvgTempLineRef.current = null;
+            fvgFirstClickRef.current = null;
+            activeLabelModeRef.current = null;
+            setActiveButton(null);
         }
-        fvgTempLine.current = null;
-        setActiveDataset(dataset);
-        setHoveredDataPoint(null);
-        setActiveLabelMode(null);
-        setFvgFirstClick(null);
+    }
+  }, [activeDataset]);
+
+  const toggleLabelMode = (mode: AnnotationType) => {
+    if (activeLabelModeRef.current === mode) {
+        // If clicking the same button, toggle off
+        activeLabelModeRef.current = null;
+        setActiveButton(null);
+        if (fvgTempLineRef.current && seriesApiRef.current) {
+            seriesApiRef.current.removePriceLine(fvgTempLineRef.current);
+        }
+        fvgFirstClickRef.current = null;
+    } else {
+        // Switching to a new mode
+        activeLabelModeRef.current = mode;
+        setActiveButton(mode);
+        // Clean up previous mode's temp state if any
+        if (fvgTempLineRef.current && seriesApiRef.current) {
+            seriesApiRef.current.removePriceLine(fvgTempLineRef.current);
+        }
+        fvgFirstClickRef.current = null;
     }
   }
-  
+
   // Effect for chart lifecycle management
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -427,8 +479,6 @@ export default function DatasetsPage() {
       },
       timeScale: { timeVisible: true, secondsVisible: false },
       crosshair: { mode: CrosshairMode.Normal },
-      handleScroll: true,
-      handleScale: true,
     };
 
     const chart = createChart(chartContainerRef.current, {
@@ -443,7 +493,8 @@ export default function DatasetsPage() {
         wickDownColor: '#ef4444', wickUpColor: '#22c55e',
     });
 
-    chartApiRef.current = { chart, series };
+    chartApiRef.current = chart;
+    seriesApiRef.current = series;
 
     chart.subscribeCrosshairMove(handleCrosshairMove);
     chart.subscribeClick(handleChartClick);
@@ -456,114 +507,94 @@ export default function DatasetsPage() {
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
       chart.unsubscribeClick(handleChartClick);
       chart.remove();
-      chartApiRef.current = { chart: null, series: null };
+      chartApiRef.current = null;
+      seriesApiRef.current = null;
     };
   }, [theme, handleChartClick, handleCrosshairMove]);
 
-  const fullChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
-  const currentMarkers = activeDataset ? labeledPoints[activeDataset.id] || [] : [];
-  
-  // Effect to update chart data
+  // Effect to update chart DATA when active dataset changes
   useEffect(() => {
-    const series = chartApiRef.current?.series;
-    if (series && fullChartData) {
-      series.setData(fullChartData);
-      chartApiRef.current.chart?.timeScale().fitContent();
-    }
-  }, [fullChartData]);
-
-  // Effect to update markers
-  useEffect(() => {
-    const series = chartApiRef.current?.series;
-    if (series) {
-      series.setMarkers(currentMarkers);
-    }
-  }, [currentMarkers]);
-
-  // Effect to draw and manage price lines/areas
-  useEffect(() => {
-    const series = chartApiRef.current?.series;
-    if (!series || !activeDataset) return;
-    
-    // Clear all existing price lines from the chart for the active dataset to prevent duplicates
-    if (priceLineRefs.current[activeDataset.id]) {
-      priceLineRefs.current[activeDataset.id].forEach(line => series.removePriceLine(line));
-    }
-    priceLineRefs.current[activeDataset.id] = [];
-
-    // Redraw all lines/areas from state for the current active dataset
-    const currentLineOptions = priceLines[activeDataset.id] || [];
-    const newLines: IPriceLine[] = [];
-
-    currentLineOptions.forEach(options => {
-        if (options.annotationType === 'FVG' && options.price2 !== undefined) {
-            const topLine = series.createPriceLine({
-                price: options.price, color: '#8b5cf6', lineWidth: 1,
-                lineStyle: 2, axisLabelVisible: true, title: "FVG High",
-            });
-             const bottomLine = series.createPriceLine({
-                price: options.price2, color: '#8b5cf6', lineWidth: 1,
-                lineStyle: 2, axisLabelVisible: true, title: "FVG Low",
-            });
-            newLines.push(topLine, bottomLine);
-
-        } else if (options.annotationType === 'BOS' || options.annotationType === 'CHOCH') {
-            const line = series.createPriceLine(options);
-            newLines.push(line);
+    const series = seriesApiRef.current;
+    if (series && activeDataset) {
+        const data = parsedData[activeDataset.id] || [];
+        series.setData(data);
+        if (data.length > 0) {
+            chartApiRef.current?.timeScale().fitContent();
         }
-    });
+    } else if (series) {
+        series.setData([]); // Clear data if no active dataset
+    }
+  }, [activeDataset, parsedData]);
 
-    priceLineRefs.current[activeDataset.id] = newLines;
+  // Effect to update chart MARKERS (Points) when they change for the active dataset
+  useEffect(() => {
+    const series = seriesApiRef.current;
+    if (series && activeDataset) {
+        const markers = labeledPoints[activeDataset.id] || [];
+        series.setMarkers(markers);
+    } else if (series) {
+        series.setMarkers([]);
+    }
+  }, [activeDataset, labeledPoints]);
 
-  }, [activeDataset, priceLines]);
+  // Effect to draw and manage chart LINES/AREAS when they change for the active dataset
+  useEffect(() => {
+    const series = seriesApiRef.current;
+    if (!series) return;
 
-
-  const toggleLabelMode = (mode: AnnotationType) => {
-    const series = chartApiRef.current.series;
+    // Clear all existing price lines from the chart
+    priceLineRefs.current.forEach(line => series.removePriceLine(line));
+    priceLineRefs.current.clear();
     
-    setActiveLabelMode(currentMode => {
-        if (currentMode === mode) {
-             if (fvgTempLine.current && series) {
-                series.removePriceLine(fvgTempLine.current);
-                fvgTempLine.current = null;
+    if (activeDataset) {
+        const currentLineOptions = priceLines[activeDataset.id] || [];
+        
+        currentLineOptions.forEach(options => {
+            if (options.annotationType === 'FVG' && options.price2 !== undefined) {
+                // This is a special case for FVG which requires two lines and a fill
+                const topLine = series.createPriceLine({
+                    price: options.price, color: '#8b5cf6', lineWidth: 1,
+                    lineStyle: 2, axisLabelVisible: true, title: "FVG High",
+                });
+                const bottomLine = series.createPriceLine({
+                    price: options.price2, color: '#8b5cf6', lineWidth: 1,
+                    lineStyle: 2, axisLabelVisible: true, title: "FVG Low",
+                });
+                // Note: Lightweight Charts doesn't directly support filled areas between two price lines.
+                // This visualization uses two lines as boundaries. A more complex visualization would require plugins or overlays.
+                priceLineRefs.current.set(`${options.title}-top`, topLine);
+                priceLineRefs.current.set(`${options.title}-bottom`, bottomLine);
+
+            } else if (options.annotationType === 'BOS' || options.annotationType === 'CHOCH') {
+                const line = series.createPriceLine(options);
+                priceLineRefs.current.set(options.title, line);
             }
-            setFvgFirstClick(null);
-            return null; // Toggle off
-        }
-        
-        // If switching mode, clean up previous mode's temp state
-        if (fvgTempLine.current && series) {
-            series.removePriceLine(fvgTempLine.current);
-            fvgTempLine.current = null;
-        }
-        setFvgFirstClick(null);
-        
-        return mode; // Toggle on
-    });
-  }
+        });
+    }
+  }, [activeDataset, priceLines]);
 
   const getHelperText = () => {
     if (!activeDataset) return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
-    if (activeLabelMode) {
-      if (activeLabelMode === 'FVG') {
-        return fvgFirstClick ? 'Chế độ FVG: Nhấp để chọn cạnh dưới của vùng.' : 'Chế độ FVG: Nhấp để chọn cạnh trên của vùng.';
+    const currentMode = activeButton;
+    if (currentMode) {
+      if (currentMode === 'FVG') {
+        return fvgFirstClickRef.current ? 'Chế độ FVG: Nhấp để chọn cạnh dưới của vùng.' : 'Chế độ FVG: Nhấp để chọn cạnh trên của vùng.';
       }
-      return `Chế độ ${activeLabelMode}: Nhấp vào biểu đồ để đặt nhãn.`;
+      return `Chế độ ${currentMode}: Nhấp vào biểu đồ để đặt nhãn.`;
     }
     return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
   }
-
 
   const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={activeLabelMode === mode ? 'default' : 'outline'}
+            variant={activeButton === mode ? 'default' : 'outline'}
             size="lg"
             className={cn(
               "h-12 w-20 flex-col",
-               activeLabelMode === mode &&
+               activeButton === mode &&
                 (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
                  mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
                  mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
@@ -712,7 +743,7 @@ export default function DatasetsPage() {
                 </CardDescription>
                 </CardHeader>
                 <CardContent>
-                {activeDataset && fullChartData.length > 0 ? (
+                {activeDataset && (parsedData[activeDataset.id] || []).length > 0 ? (
                     <div ref={chartContainerRef} className="w-full h-[500px]" />
                 ) : (
                     <div className="flex items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
@@ -769,3 +800,5 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
+
+    
