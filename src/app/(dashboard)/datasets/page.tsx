@@ -150,7 +150,7 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
 
     const chartOptions = {
       layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
+        background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
         textColor: isDark ? '#D1D5DB' : '#1F2937',
       },
       grid: {
@@ -284,6 +284,13 @@ export default function DatasetsPage() {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
     }
+  };
+
+  const handleLabel = (label: 'BUY' | 'SELL' | 'HOLD') => {
+    if (!activeDataset || !currentDataPoint) return;
+    console.log(`Labeled point ${currentIndex} for dataset ${activeDataset.id} as ${label}`);
+    // Here you would typically save the label to your backend
+    handleNext(); // Move to the next point after labeling
   };
 
 
@@ -454,15 +461,15 @@ export default function DatasetsPage() {
                     <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex justify-center gap-2">
-                    <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset}>
+                    <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('BUY')}>
                         <ArrowUp className="h-5 w-5" />
                         <span className="text-xs">Mua</span>
                     </Button>
-                    <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset}>
+                    <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset} onClick={() => handleLabel('HOLD')}>
                         <Circle className="h-5 w-5" />
                         <span className="text-xs">Giữ</span>
                     </Button>
-                    <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset}>
+                    <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('SELL')}>
                         <ArrowDown className="h-5 w-5" />
                         <span className="text-xs">Bán</span>
                     </Button>
