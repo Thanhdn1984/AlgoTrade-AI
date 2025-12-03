@@ -4,6 +4,5 @@ config();
 
 import '@/ai/flows/label-training-data.ts';
 import '@/ai/flows/generate-trade-signals.ts';
-import '@/ai/flows/auto-label-data.ts';
-
     
+

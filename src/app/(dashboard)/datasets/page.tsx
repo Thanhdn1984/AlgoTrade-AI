@@ -29,8 +29,7 @@ import {
   ArrowDown,
   LineChart as LineChartIcon,
   Ruler,
-  Cpu,
-  Wand2,
+  Cpu
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -47,18 +46,53 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint } from "@/lib/types";
-import { useEffect, useRef, useState, useCallback, memo, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { useActionState } from 'react';
-import { useFormStatus } from 'react-dom';
-import { uploadFileAction, trainModelAction, autoLabelAction } from "@/lib/actions";
+import { uploadFileAction, trainModelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// --- Data Types ---
+// --- Mock Data ---
+const initialDatasets: Dataset[] = [
+  {
+    id: "ds-001",
+    name: "EURUSD_H1_2023_Sample",
+    status: "Labeled",
+    itemCount: 1500,
+    createdAt: "2024-05-20",
+  },
+  {
+    id: "ds-002",
+    name: "BTCUSD_M5_2024_Q1",
+    status: "Raw",
+    itemCount: 25000,
+    createdAt: "2024-05-18",
+  },
+   {
+    id: "ds-003",
+    name: "NASDAQ_Futures_H4",
+    status: "Processing",
+    itemCount: 800,
+    createdAt: "2024-05-15",
+  },
+];
+
 type ParsedData = { [key: string]: CandlestickChartData[] };
+
+const initialParsedData: ParsedData = {
+    "ds-001": Array.from({ length: 100 }, (_, i) => {
+        const time = (1704067200 + i * 3600) as UTCTimestamp; // Jan 1 2024 + i hours
+        const open = 1.0800 + Math.random() * 0.001 - 0.0005;
+        const high = open + Math.random() * 0.001;
+        const low = open - Math.random() * 0.001;
+        const close = low + (high - low) * Math.random();
+        return { time, open, high, low, close, raw: '', index: i };
+    })
+};
+
 
 // --- Components for Upload ---
 
@@ -75,42 +109,17 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
     const [state, formAction, isPending] = useActionState(uploadFileAction, initialUploadState);
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
-    const isFirstRender = useRef(true);
-    const hasBeenSuccessful = useRef(false);
-
-    function UploadButton() {
-        const { pending } = useFormStatus();
-        return (
-          <Button type="submit" className="w-full" variant="outline" disabled={pending}>
-            {pending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
-              </>
-            ) : (
-              <>
-                <FileUp className="mr-2 h-4 w-4" /> Tải lên
-              </>
-            )}
-          </Button>
-        );
-    }
 
     useEffect(() => {
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
-        }
+        if (state.status === 'idle') return;
 
-        if (isPending) return;
-
-        if (state.status === 'success' && state.newDataset && state.parsedData && !hasBeenSuccessful.current) {
+        if (state.status === 'success' && state.newDataset && state.parsedData) {
             toast({
                 title: 'Thành công!',
                 description: state.message,
             });
             onUploadSuccess(state.newDataset, state.parsedData);
             formRef.current?.reset();
-            hasBeenSuccessful.current = true; // Mark as successful to prevent re-triggering
         } else if (state.status === 'error') {
             toast({
                 variant: 'destructive',
@@ -118,17 +127,11 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
                 description: state.message,
             });
         }
-    }, [state, toast, onUploadSuccess, isPending]);
+    }, [state, toast, onUploadSuccess]);
 
-     // Reset hasBeenSuccessful when the form is submitted again
-    const handleFormAction = (payload: FormData) => {
-        hasBeenSuccessful.current = false;
-        formAction(payload);
-    };
-  
     return (
       <Card>
-        <form ref={formRef} action={handleFormAction}>
+        <form ref={formRef} action={formAction}>
           <CardHeader>
             <CardTitle className="font-headline">Tải lên Dữ liệu</CardTitle>
             <CardDescription>
@@ -142,7 +145,17 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
             </div>
           </CardContent>
           <CardFooter>
-            <UploadButton />
+            <Button type="submit" className="w-full" variant="outline" disabled={isPending}>
+              {isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
+                </>
+              ) : (
+                <>
+                  <FileUp className="mr-2 h-4 w-4" /> Tải lên
+                </>
+              )}
+            </Button>
           </CardFooter>
         </form>
       </Card>
@@ -166,29 +179,34 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
     const { toast } = useToast();
 
     useEffect(() => {
-        if (state.status === 'idle' || isPending) return;
+        if (state.status === 'idle') return;
 
         if (state.status === 'success') {
             toast({ title: 'Thành công', description: state.message });
         } else if (state.status === 'error') {
             toast({ variant: 'destructive', title: 'Lỗi', description: state.message });
         }
-    }, [state, toast, isPending]);
+    }, [state, toast]);
     
-    const labeledDataCSV = useMemo(() => {
-        if (!labeledPoints || labeledPoints.length === 0) return '';
-        const points = labeledPoints || [];
-        return [
+    const handleTrain = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const formData = new FormData(event.currentTarget);
+        
+        // Convert labeled points to CSV
+        const labeledData = [
             'type,time,price,text', // header
-            ...points.map(p => `POINT,${p.time},${p.position === 'aboveBar' ? 'high' : 'low'},${p.text}`),
+            ...labeledPoints.map(p => `POINT,${p.time},${p.position === 'aboveBar' ? 'high' : 'low'},${p.text}`),
         ].join('\n');
-    }, [labeledPoints]);
+
+        formData.append('labeledDataCSV', labeledData);
+        
+        formAction(formData);
+    };
 
     return (
         <Card>
-             <form action={formAction}>
+             <form onSubmit={handleTrain}>
                 <input type="hidden" name="datasetId" value={activeDataset?.id || ''} />
-                <input type="hidden" name="labeledDataCSV" value={labeledDataCSV} />
                 <CardHeader>
                     <CardTitle className="font-headline">Huấn luyện Mô hình</CardTitle>
                     <CardDescription>Sử dụng dữ liệu đã gán nhãn để dạy cho AI.</CardDescription>
@@ -303,43 +321,40 @@ CandlestickChart.displayName = 'CandlestickChart';
 
 
 // --- Annotation Button Component ---
-const AnnotationButton = ({ mode, children, tooltip, activeButton, activeDataset, isAutoLabeling, toggleLabelMode }: { 
+const AnnotationButton = ({ mode, children, tooltip, activeButton, activeDataset, toggleLabelMode }: { 
     mode: AnnotationType, 
     children: React.ReactNode, 
     tooltip: string,
     activeButton: AnnotationType | null,
     activeDataset: Dataset | null,
-    isAutoLabeling: boolean,
     toggleLabelMode: (mode: AnnotationType) => void
-}) => {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={activeButton === mode ? 'default' : 'outline'}
-            size="lg"
-            className={cn(
-              "h-12 w-20 flex-col",
-              activeButton === mode &&
-                (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
-                mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
-                mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
-                'border-primary ring-2 ring-primary')
-            )}
-            disabled={!activeDataset || isAutoLabeling}
-            onClick={() => toggleLabelMode(mode)}
-          >
-            {children}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-};
+}) => (
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant={activeButton === mode ? 'default' : 'outline'}
+          size="lg"
+          className={cn(
+            "h-12 w-20 flex-col",
+            activeButton === mode &&
+              (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
+              mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
+              mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
+              'border-primary ring-2 ring-primary')
+          )}
+          disabled={!activeDataset}
+          onClick={() => toggleLabelMode(mode)}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
 
 
 // --- Main Page Component ---
@@ -349,53 +364,30 @@ const statusDisplay: { [key: string]: string } = {
   Raw: "Thô",
 };
 
-const initialAutoLabelState = { status: 'idle' as const, message: '' };
-
 export default function DatasetsPage() {
-  // Global state
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [parsedData, setParsedData] = useState<ParsedData>({});
+  const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
+  const [parsedData, setParsedData] = useState<ParsedData>(initialParsedData);
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [labeledPoints, setLabeledPoints] = useState<LabeledPoint[]>([]);
   const [loadingDatasets, setLoadingDatasets] = useState(true);
-
-  // Action states
-  const [autoLabelState, autoLabelFormAction, isAutoLabeling] = useActionState(autoLabelAction, initialAutoLabelState);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    // Simulate loading
-    setTimeout(() => setLoadingDatasets(false), 500);
-  }, []);
-
-  useEffect(() => {
-    if (autoLabelState.status === 'idle' || isAutoLabeling) return;
-
-    if (autoLabelState.status === 'success' && autoLabelState.labeledPoints) {
-      toast({ title: 'Thành công!', description: autoLabelState.message });
-      // Merge new labels, avoiding duplicates
-      setLabeledPoints(prev => {
-        const existingTimes = new Set(prev.map(p => p.time));
-        const newPoints = autoLabelState.labeledPoints!.filter(p => !existingTimes.has(p.time));
-        return [...prev, ...newPoints].sort((a, b) => (a.time as number) - (b.time as number));
-      });
-    } else if (autoLabelState.status === 'error') {
-      toast({ variant: 'destructive', title: 'Lỗi gán nhãn tự động', description: autoLabelState.message });
-    }
-  }, [autoLabelState, isAutoLabeling, toast]);
   
   // UI State
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData & { price?: number } | null>(null);
   const activeLabelModeRef = useRef<AnnotationType | null>(null);
   const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
   
-  const handleAddDataset = useCallback((newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
+  useEffect(() => {
+    // Simulate loading
+    setTimeout(() => setLoadingDatasets(false), 500);
+  }, []);
+
+  const handleAddDataset = (newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
     const newId = `dataset-${Date.now()}`;
     const newDataset = { ...newDatasetData, id: newId };
     
     setDatasets(prev => [...prev, newDataset]);
     setParsedData(prev => ({ ...prev, [newId]: newParsedData }));
-  }, []);
+  };
 
 
   const handleDeleteDataset = (datasetId: string) => {
@@ -477,7 +469,7 @@ export default function DatasetsPage() {
       }
 
       if (newMarker) {
-         setLabeledPoints(prev => [...prev, { ...newMarker, id: `point-${Date.now()}` } as LabeledPoint].sort((a,b) => (a.time as number) - (b.time as number)));
+         setLabeledPoints(prev => [...prev, { ...newMarker, id: `point-${Date.now()}` } as LabeledPoint]);
       }
       
       activeLabelModeRef.current = null;
@@ -485,7 +477,6 @@ export default function DatasetsPage() {
   }, [activeDataset]);
 
   const getHelperText = () => {
-    if (isAutoLabeling) return 'AI đang phân tích, vui lòng đợi...';
     if (!activeDataset) return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
     const currentMode = activeButton;
     if (currentMode) {
@@ -494,32 +485,14 @@ export default function DatasetsPage() {
     return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
   }
   
-  const markers = useMemo(() => {
-    return labeledPoints.map(p => ({
-        time: p.time,
-        position: p.position,
-        color: p.color,
-        shape: p.shape,
-        text: p.text
-    }));
-  }, [labeledPoints]);
+  const markers = labeledPoints.map(p => ({
+    time: p.time,
+    position: p.position,
+    color: p.color,
+    shape: p.shape,
+    text: p.text
+  }));
 
-  const rawDataToCsv = (data: CandlestickChartData[]): string => {
-    if (!data || data.length === 0) return '';
-    const headers = 'time,open,high,low,close';
-    const rows = data.map(d => `${d.time},${d.open},${d.high},${d.low},${d.close}`);
-    return [headers, ...rows].join('\n');
-  };
-
-  const handleAutoLabel = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!activeDataset) return;
-    const formData = new FormData();
-    formData.append('datasetId', activeDataset.id);
-    const csvData = rawDataToCsv(parsedData[activeDataset.id] || []);
-    formData.append('csvData', csvData);
-    autoLabelFormAction(formData);
-  };
 
   return (
     <Tabs defaultValue="all">
@@ -621,20 +594,8 @@ export default function DatasetsPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuLabel>Hành động</DropdownMenuLabel>
-                                  <DropdownMenuItem disabled={dataset.status === 'Processing'} onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn</DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={(e) => handleAutoLabel(e)} disabled={isAutoLabeling || activeDataset?.id !== dataset.id}>
-                                    {isAutoLabeling && activeDataset?.id === dataset.id ? (
-                                      <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        <span>Đang gán nhãn...</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Wand2 className="mr-2 h-4 w-4" />
-                                        <span>Gán nhãn tự động</span>
-                                      </>
-                                    )}
-                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn</DropdownMenuItem>
+                                  <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
                                   <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
@@ -698,23 +659,23 @@ export default function DatasetsPage() {
                     </div>
 
                     <div className="flex justify-center gap-2">
-                        <AnnotationButton mode="BUY" tooltip="Đánh dấu điểm Mua" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
+                        <AnnotationButton mode="BUY" tooltip="Đánh dấu điểm Mua" {...{activeButton, activeDataset, toggleLabelMode}}>
                             <ArrowUp className="h-5 w-5" />
                             <span className="text-xs">Mua</span>
                         </AnnotationButton>
-                        <AnnotationButton mode="HOLD" tooltip="Đánh dấu điểm Giữ" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
+                        <AnnotationButton mode="HOLD" tooltip="Đánh dấu điểm Giữ" {...{activeButton, activeDataset, toggleLabelMode}}>
                             <Circle className="h-5 w-5" />
                             <span className="text-xs">Giữ</span>
                         </AnnotationButton>
-                        <AnnotationButton mode="SELL" tooltip="Đánh dấu điểm Bán" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
+                        <AnnotationButton mode="SELL" tooltip="Đánh dấu điểm Bán" {...{activeButton, activeDataset, toggleLabelMode}}>
                             <ArrowDown className="h-5 w-5" />
                             <span className="text-xs">Bán</span>
                         </AnnotationButton>
-                         <AnnotationButton mode="BOS" tooltip="Phá vỡ cấu trúc (Break of Structure)" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
+                         <AnnotationButton mode="BOS" tooltip="Phá vỡ cấu trúc (Break of Structure)" {...{activeButton, activeDataset, toggleLabelMode}}>
                             <LineChartIcon className="h-5 w-5" />
                             <span className="text-xs">BOS</span>
                         </AnnotationButton>
-                         <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
+                         <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)" {...{activeButton, activeDataset, toggleLabelMode}}>
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
                         </AnnotationButton>
