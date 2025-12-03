@@ -18,7 +18,7 @@ const fontHeadline = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: 'AlgoTrade AI',
-  description: 'AI-powered trading signal generation platform',
+  description: 'Nền tảng tạo tín hiệu giao dịch bằng AI',
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="vi" suppressHydrationWarning>
       <body 
         className={cn(
           "font-body antialiased",

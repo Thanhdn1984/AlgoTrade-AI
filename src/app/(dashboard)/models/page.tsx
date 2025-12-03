@@ -1,4 +1,3 @@
-
 'use client';
 import {
   Card,
@@ -47,6 +46,12 @@ const models: Model[] = [
   },
 ];
 
+const statusDisplay: { [key: string]: string } = {
+  Deployed: "Đã triển khai",
+  Training: "Đang huấn luyện",
+  Archived: "Lưu trữ",
+};
+
 const statusIcons = {
   Deployed: <CheckCircle className="h-4 w-4 text-green-500" />,
   Training: <Clock className="h-4 w-4 text-blue-500" />,
@@ -57,15 +62,15 @@ export default function ModelsPage() {
   const [lastUpdated, setLastUpdated] = useState('');
 
   useEffect(() => {
-    setLastUpdated(new Date().toLocaleDateString());
+    setLastUpdated(new Date().toLocaleDateString('vi-VN'));
   }, []);
   
   return (
     <div className="space-y-6">
        <div>
-        <h1 className="text-2xl font-bold font-headline tracking-tight">Models</h1>
+        <h1 className="text-2xl font-bold font-headline tracking-tight">Mô hình</h1>
         <p className="text-muted-foreground">
-            Monitor and manage your machine learning models.
+            Theo dõi và quản lý các mô hình học máy của bạn.
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -78,35 +83,35 @@ export default function ModelsPage() {
                   {model.name}
                 </CardTitle>
                 <Badge variant={model.status === 'Deployed' ? 'default' : model.status === 'Training' ? 'secondary' : 'outline'}>
-                  {statusIcons[model.status]}
-                  <span className="ml-1.5">{model.status}</span>
+                  {statusIcons[model.status as keyof typeof statusIcons]}
+                  <span className="ml-1.5">{statusDisplay[model.status]}</span>
                 </Badge>
               </div>
-              <CardDescription>Version {model.version}</CardDescription>
+              <CardDescription>Phiên bản {model.version}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {model.status === 'Training' ? (
                 <div>
                   <div className="flex justify-between mb-1">
-                     <span className="text-sm font-medium">Training Progress</span>
+                     <span className="text-sm font-medium">Tiến độ Huấn luyện</span>
                      <span className="text-sm font-medium text-muted-foreground">75%</span>
                   </div>
-                  <Progress value={75} aria-label="Training progress" />
+                  <Progress value={75} aria-label="Tiến độ huấn luyện" />
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-muted-foreground">Accuracy</p>
+                    <p className="text-muted-foreground">Độ chính xác</p>
                     <p className="font-semibold text-lg">{model.accuracy}%</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">F1 Score</p>
-                    <p className="font-semibold text-lg">{model.f1Score || "N/A"}</p>
+                    <p className="text-muted-foreground">Điểm F1</p>
+                    <p className="font-semibold text-lg">{model.f1Score || "K/C"}</p>
                   </div>
                 </div>
               )}
                <div className="text-xs text-muted-foreground pt-2">
-                 {model.status === 'Training' ? 'Epoch 15/20...' : `Last updated: ${lastUpdated}`}
+                 {model.status === 'Training' ? 'Epoch 15/20...' : `Cập nhật lần cuối: ${lastUpdated}`}
                </div>
             </CardContent>
           </Card>

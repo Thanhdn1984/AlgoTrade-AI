@@ -1,12 +1,11 @@
-// This file is empty in the original code.
 "use server";
 
 import { generateTradeSignals } from "@/ai/flows/generate-trade-signals";
 import { z } from "zod";
 
 const formSchema = z.object({
-  dataset: z.string().min(1, "Please select a dataset."),
-  model: z.string().min(1, "Please select a model."),
+  dataset: z.string().min(1, "Vui lòng chọn một bộ dữ liệu."),
+  model: z.string().min(1, "Vui lòng chọn một mô hình."),
 });
 
 type State = {
@@ -36,12 +35,12 @@ export async function generateSignalsAction(
     if (!validatedFields.success) {
       return {
         status: "error",
-        message: validatedFields.error.flatten().fieldErrors.dataset?.[0] || validatedFields.error.flatten().fieldErrors.model?.[0] || "Invalid input.",
+        message: validatedFields.error.flatten().fieldErrors.dataset?.[0] || validatedFields.error.flatten().fieldErrors.model?.[0] || "Dữ liệu không hợp lệ.",
       };
     }
     
-    // Here you would typically fetch the dataset content from Cloud Storage
-    // For this demo, we'll use a placeholder string.
+    // Ở đây, bạn thường sẽ tìm nạp nội dung bộ dữ liệu từ Cloud Storage
+    // Đối với bản demo này, chúng tôi sẽ sử dụng một chuỗi giữ chỗ.
     const labeledData = `Date,Open,High,Low,Close,Volume,Label\n2023-01-01,150,152,149,151,100000,BUY`;
 
     const result = await generateTradeSignals({
@@ -52,18 +51,18 @@ export async function generateSignalsAction(
     if (result && result.tradeSignals) {
       return {
         status: "success",
-        message: "Signals generated successfully.",
+        message: "Tạo tín hiệu thành công.",
         data: {
             tradeSignals: result.tradeSignals,
             modelStatistics: result.modelStatistics,
         }
       };
     } else {
-       return { status: "error", message: "AI generation failed to produce valid signals." };
+       return { status: "error", message: "Tạo tín hiệu AI thất bại, không có kết quả hợp lệ." };
     }
 
   } catch (error) {
     console.error(error);
-    return { status: "error", message: "An unexpected error occurred. Please try again." };
+    return { status: "error", message: "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại." };
   }
 }

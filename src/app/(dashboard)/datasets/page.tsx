@@ -81,6 +81,12 @@ const datasets: Dataset[] = [
   },
 ];
 
+const statusDisplay: { [key: string]: string } = {
+  Labeled: "Đã gán nhãn",
+  Processing: "Đang xử lý",
+  Raw: "Thô",
+};
+
 const chartData = [
   { browser: "chrome", visitors: 275, fill: "var(--color-chrome)" },
   { browser: "safari", visitors: 200, fill: "var(--color-safari)" },
@@ -91,7 +97,7 @@ const chartData = [
 
 const chartConfig = {
   visitors: {
-    label: "Visitors",
+    label: "Lượt truy cập",
   },
   chrome: {
     label: "Chrome",
@@ -110,7 +116,7 @@ const chartConfig = {
     color: "hsl(var(--chart-4))",
   },
   other: {
-    label: "Other",
+    label: "Khác",
     color: "hsl(var(--chart-5))",
   },
 } satisfies ChartConfig;
@@ -120,9 +126,9 @@ export default function DatasetsPage() {
     <Tabs defaultValue="all">
       <div className="flex items-center">
         <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="labeled">Labeled</TabsTrigger>
-          <TabsTrigger value="raw">Raw</TabsTrigger>
+          <TabsTrigger value="all">Tất cả</TabsTrigger>
+          <TabsTrigger value="labeled">Đã gán nhãn</TabsTrigger>
+          <TabsTrigger value="raw">Thô</TabsTrigger>
         </TabsList>
         <div className="ml-auto flex items-center gap-2">
           <DropdownMenu>
@@ -130,21 +136,21 @@ export default function DatasetsPage() {
               <Button variant="outline" size="sm" className="h-7 gap-1">
                 <ListFilter className="h-3.5 w-3.5" />
                 <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                  Filter
+                  Lọc
                 </span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+              <DropdownMenuLabel>Lọc theo</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Status</DropdownMenuItem>
-              <DropdownMenuItem>Date</DropdownMenuItem>
+              <DropdownMenuItem>Trạng thái</DropdownMenuItem>
+              <DropdownMenuItem>Ngày</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button size="sm" variant="outline" className="h-7 gap-1">
             <ArrowDownToLine className="h-3.5 w-3.5" />
             <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-              Export
+              Xuất
             </span>
           </Button>
         </div>
@@ -154,21 +160,21 @@ export default function DatasetsPage() {
           <div className="md:col-span-2">
             <Card>
               <CardHeader>
-                <CardTitle className="font-headline">Datasets</CardTitle>
+                <CardTitle className="font-headline">Bộ dữ liệu</CardTitle>
                 <CardDescription>
-                  Manage your datasets for training and analysis.
+                  Quản lý các bộ dữ liệu của bạn để huấn luyện và phân tích.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Items</TableHead>
-                      <TableHead className="text-right">Created At</TableHead>
+                      <TableHead>Tên</TableHead>
+                      <TableHead>Trạng thái</TableHead>
+                      <TableHead className="text-right">Số mục</TableHead>
+                      <TableHead className="text-right">Ngày tạo</TableHead>
                       <TableHead>
-                        <span className="sr-only">Actions</span>
+                        <span className="sr-only">Hành động</span>
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -188,7 +194,7 @@ export default function DatasetsPage() {
                                 : "outline"
                             }
                           >
-                            {dataset.status}
+                            {statusDisplay[dataset.status]}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
@@ -206,16 +212,16 @@ export default function DatasetsPage() {
                                 variant="ghost"
                               >
                                 <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Toggle menu</span>
+                                <span className="sr-only">Mở menu</span>
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuItem>Label</DropdownMenuItem>
-                              <DropdownMenuItem>View Details</DropdownMenuItem>
+                              <DropdownMenuLabel>Hành động</DropdownMenuLabel>
+                              <DropdownMenuItem>Gán nhãn</DropdownMenuItem>
+                              <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive">
-                                Delete
+                                Xóa
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -230,28 +236,28 @@ export default function DatasetsPage() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="font-headline">Upload Data</CardTitle>
+                <CardTitle className="font-headline">Tải lên Dữ liệu</CardTitle>
                 <CardDescription>
-                  Upload a new CSV file to create a dataset.
+                  Tải lên tệp CSV mới để tạo một bộ dữ liệu.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid w-full max-w-sm items-center gap-1.5">
-                  <Label htmlFor="data-file">CSV File</Label>
+                  <Label htmlFor="data-file">Tệp CSV</Label>
                   <Input id="data-file" type="file" />
                 </div>
               </CardContent>
               <CardFooter>
                 <Button className="w-full" variant="outline">
-                  <FileUp className="mr-2 h-4 w-4" /> Upload
+                  <FileUp className="mr-2 h-4 w-4" /> Tải lên
                 </Button>
               </CardFooter>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="font-headline">Manual Labeling</CardTitle>
+                <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
                 <CardDescription>
-                  Label data points for EURUSD_H1_2023.
+                  Gán nhãn các điểm dữ liệu cho EURUSD_H1_2023.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -276,7 +282,7 @@ export default function DatasetsPage() {
                     </BarChart>
                   </ChartContainer>
                   <p className="text-sm text-muted-foreground mt-4">
-                    Candlestick at 2023-10-01 14:00
+                    Nến lúc 2023-10-01 14:00
                   </p>
                 </div>
               </CardContent>

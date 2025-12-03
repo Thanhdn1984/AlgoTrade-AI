@@ -26,12 +26,12 @@ import { SidebarNav } from "./sidebar-nav";
 import { cn } from "@/lib/utils";
 
 const getTitleFromPathname = (pathname: string) => {
-  if (pathname === '/dashboard') return 'Dashboard';
-  if (pathname.startsWith('/datasets')) return 'Datasets';
-  if (pathname.startsWith('/data-sources')) return 'Data Sources';
-  if (pathname.startsWith('/signals')) return 'AI Signals';
-  if (pathname.startsWith('/models')) return 'Models';
-  if (pathname.startsWith('/execution')) return 'Execution';
+  if (pathname === '/dashboard') return 'Bảng điều khiển';
+  if (pathname.startsWith('/datasets')) return 'Bộ dữ liệu';
+  if (pathname.startsWith('/data-sources')) return 'Nguồn dữ liệu';
+  if (pathname.startsWith('/signals')) return 'Tín hiệu AI';
+  if (pathname.startsWith('/models')) return 'Mô hình';
+  if (pathname.startsWith('/execution')) return 'Thực thi';
   return 'AlgoTrade AI';
 };
 
@@ -46,7 +46,7 @@ export function Header() {
         <SheetTrigger asChild>
           <Button size="icon" variant="outline" className="sm:hidden">
             <PanelLeft className="h-5 w-5" />
-            <span className="sr-only">Toggle Menu</span>
+            <span className="sr-only">Mở Menu</span>
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="sm:max-w-xs bg-card p-0">
@@ -72,7 +72,7 @@ export function Header() {
       >
         <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
         <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        <span className="sr-only">Toggle theme</span>
+        <span className="sr-only">Đổi giao diện</span>
       </Button>
 
       <DropdownMenu>
@@ -88,20 +88,20 @@ export function Header() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="end">
-          <DropdownMenuLabel>My Account</DropdownMenuLabel>
+          <DropdownMenuLabel>Tài khoản của tôi</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem>
             <CircleUser className="mr-2 h-4 w-4" />
-            <span>Profile</span>
+            <span>Hồ sơ</span>
           </DropdownMenuItem>
           <DropdownMenuItem>
             <Settings className="mr-2 h-4 w-4" />
-            <span>Settings</span>
+            <span>Cài đặt</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem>
             <LogOut className="mr-2 h-4 w-4" />
-            <span>Log out</span>
+            <span>Đăng xuất</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

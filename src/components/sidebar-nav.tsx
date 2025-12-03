@@ -20,12 +20,12 @@ import {
 } from "./ui/tooltip";
 
 const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/datasets", icon: Database, label: "Datasets" },
-  { href: "/data-sources", icon: Link2, label: "Data Sources" },
-  { href: "/signals", icon: Signal, label: "AI Signals" },
-  { href: "/models", icon: Cpu, label: "Models" },
-  { href: "/execution", icon: Bot, label: "Execution" },
+  { href: "/dashboard", icon: LayoutDashboard, label: "Bảng điều khiển" },
+  { href: "/datasets", icon: Database, label: "Bộ dữ liệu" },
+  { href: "/data-sources", icon: Link2, label: "Nguồn dữ liệu" },
+  { href: "/signals", icon: Signal, label: "Tín hiệu AI" },
+  { href: "/models", icon: Cpu, label: "Mô hình" },
+  { href: "/execution", icon: Bot, label: "Thực thi" },
 ];
 
 type SidebarNavProps = {

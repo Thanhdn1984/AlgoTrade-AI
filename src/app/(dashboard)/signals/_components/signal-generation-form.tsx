@@ -37,6 +37,12 @@ const initialState = {
   message: '',
 };
 
+const signalTypeDisplay: { [key: string]: string } = {
+  BUY: "MUA",
+  SELL: "BÁN",
+  HOLD: "GIỮ",
+};
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -44,12 +50,12 @@ function SubmitButton() {
       {pending ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Generating...
+          Đang tạo...
         </>
       ) : (
         <>
           <Wand2 className="mr-2 h-4 w-4" />
-          Generate Signals
+          Tạo Tín hiệu
         </>
       )}
     </Button>
@@ -64,13 +70,13 @@ export function SignalGenerationForm() {
   useEffect(() => {
     if (state.status === 'success') {
       toast({
-        title: 'Success!',
+        title: 'Thành công!',
         description: state.message,
       });
     } else if (state.status === 'error') {
       toast({
         variant: 'destructive',
-        title: 'Error',
+        title: 'Lỗi',
         description: state.message,
       });
     }
@@ -82,15 +88,15 @@ export function SignalGenerationForm() {
         <form ref={formRef} action={formAction}>
           <Card>
             <CardHeader>
-              <CardTitle className="font-headline">Configuration</CardTitle>
-              <CardDescription>Select a dataset and a model to generate signals.</CardDescription>
+              <CardTitle className="font-headline">Cấu hình</CardTitle>
+              <CardDescription>Chọn một bộ dữ liệu và một mô hình để tạo tín hiệu.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="dataset">Dataset</Label>
+                <Label htmlFor="dataset">Bộ dữ liệu</Label>
                 <Select name="dataset" required>
                   <SelectTrigger id="dataset">
-                    <SelectValue placeholder="Select a dataset" />
+                    <SelectValue placeholder="Chọn một bộ dữ liệu" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="EURUSD_H1_2023">EURUSD_H1_2023</SelectItem>
@@ -100,10 +106,10 @@ export function SignalGenerationForm() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="model">Model</Label>
+                <Label htmlFor="model">Mô hình</Label>
                 <Select name="model" required>
                   <SelectTrigger id="model">
-                    <SelectValue placeholder="Select a model" />
+                    <SelectValue placeholder="Chọn một mô hình" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="LSTM_v1.2">LSTM_v1.2</SelectItem>
@@ -123,15 +129,15 @@ export function SignalGenerationForm() {
       <div className="lg:col-span-2">
         <Card className="min-h-[380px]">
           <CardHeader>
-            <CardTitle className="font-headline">Generated Signals</CardTitle>
-            <CardDescription>The output from the AI model will be displayed here.</CardDescription>
+            <CardTitle className="font-headline">Tín hiệu đã tạo</CardTitle>
+            <CardDescription>Kết quả từ mô hình AI sẽ được hiển thị ở đây.</CardDescription>
           </CardHeader>
           <CardContent>
             {state.status === 'idle' && (
                 <div className="flex flex-col items-center justify-center text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg h-full">
                     <Wand2 className="h-12 w-12 mb-4" />
-                    <p className="font-semibold">Signals will appear here</p>
-                    <p className="text-sm">Configure your generation settings and click "Generate Signals".</p>
+                    <p className="font-semibold">Tín hiệu sẽ xuất hiện ở đây</p>
+                    <p className="text-sm">Cấu hình các thiết lập và nhấp vào "Tạo Tín hiệu".</p>
                 </div>
             )}
             
@@ -141,7 +147,7 @@ export function SignalGenerationForm() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-lg font-headline flex items-center">
                                 <FileText className="mr-2 h-5 w-5" />
-                                Model Statistics
+                                Thống kê Mô hình
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -152,10 +158,10 @@ export function SignalGenerationForm() {
                     <Table>
                         <TableHeader>
                         <TableRow>
-                            <TableHead>Symbol</TableHead>
-                            <TableHead>Signal</TableHead>
-                            <TableHead className="text-right">Confidence</TableHead>
-                            <TableHead>Timestamp</TableHead>
+                            <TableHead>Mã</TableHead>
+                            <TableHead>Tín hiệu</TableHead>
+                            <TableHead className="text-right">Độ tin cậy</TableHead>
+                            <TableHead>Thời gian</TableHead>
                         </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -172,13 +178,13 @@ export function SignalGenerationForm() {
                                     : 'secondary'
                                 }
                                 >
-                                {signal.signalType}
+                                {signalTypeDisplay[signal.signalType]}
                                 </Badge>
                             </TableCell>
                             <TableCell className="text-right">
                                 {(signal.confidence * 100).toFixed(1)}%
                             </TableCell>
-                            <TableCell>{new Date(signal.timestamp).toLocaleString()}</TableCell>
+                            <TableCell>{new Date(signal.timestamp).toLocaleString('vi-VN')}</TableCell>
                             </TableRow>
                         ))}
                         </TableBody>
@@ -189,7 +195,7 @@ export function SignalGenerationForm() {
             {state.status === 'error' && state.message && (
                 <Alert variant="destructive" className="h-full">
                     <Bot className="h-4 w-4" />
-                    <AlertTitle>Generation Failed</AlertTitle>
+                    <AlertTitle>Tạo tín hiệu thất bại</AlertTitle>
                     <AlertDescription>
                         {state.message}
                     </AlertDescription>

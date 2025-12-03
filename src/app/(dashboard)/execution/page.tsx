@@ -12,9 +12,9 @@ export default function ExecutionPage() {
                     <Bot className="h-10 w-10 text-primary" />
                 </div>
             </div>
-          <CardTitle className="text-2xl font-headline">Execution Service</CardTitle>
+          <CardTitle className="text-2xl font-headline">Dịch vụ Thực thi</CardTitle>
           <CardDescription>
-            This service reads generated signals and executes trades via broker APIs.
+            Dịch vụ này đọc các tín hiệu được tạo và thực hiện giao dịch qua API của nhà môi giới.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -22,21 +22,21 @@ export default function ExecutionPage() {
             <div className="flex items-center">
               <ShieldCheck className="h-6 w-6 mr-3 text-green-500" />
               <div>
-                <p className="font-semibold">Service Status</p>
-                <p className="text-sm text-muted-foreground">All systems are operational.</p>
+                <p className="font-semibold">Trạng thái Dịch vụ</p>
+                <p className="text-sm text-muted-foreground">Tất cả các hệ thống đang hoạt động.</p>
               </div>
             </div>
             <Badge variant="default" className="bg-green-500/20 text-green-700 dark:bg-green-500/20 dark:text-green-400">
-                Online
+                Trực tuyến
             </Badge>
           </div>
           <div className="p-4 bg-muted/50 rounded-lg">
              <div className="flex items-center mb-2">
                 <Terminal className="h-4 w-4 mr-2" />
-                <h3 className="font-semibold text-sm">Service Details</h3>
+                <h3 className="font-semibold text-sm">Chi tiết Dịch vụ</h3>
              </div>
              <p className="text-sm text-muted-foreground">
-                The execution service is a separate, secure backend application. It is responsible for risk checks, idempotency, and communicating with broker APIs like MT5/Exness. It operates independently from this user interface for maximum security and reliability.
+                Dịch vụ thực thi là một ứng dụng backend riêng biệt và an toàn. Nó chịu trách nhiệm kiểm tra rủi ro, tính bất biến (idempotency), và giao tiếp với API của nhà môi giới như MT5/Exness. Nó hoạt động độc lập với giao diện người dùng này để đảm bảo an toàn và độ tin cậy tối đa.
              </p>
           </div>
         </CardContent>

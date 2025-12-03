@@ -25,21 +25,21 @@ import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 
 const chartData = [
-  { month: "January", profit: 186, loss: 80 },
-  { month: "February", profit: 305, loss: 200 },
-  { month: "March", profit: 237, loss: 120 },
-  { month: "April", profit: 73, loss: 190 },
-  { month: "May", profit: 209, loss: 130 },
-  { month: "June", profit: 214, loss: 140 },
+  { month: "Tháng 1", profit: 186, loss: 80 },
+  { month: "Tháng 2", profit: 305, loss: 200 },
+  { month: "Tháng 3", profit: 237, loss: 120 },
+  { month: "Tháng 4", profit: 73, loss: 190 },
+  { month: "Tháng 5", profit: 209, loss: 130 },
+  { month: "Tháng 6", profit: 214, loss: 140 },
 ];
 
 const chartConfig = {
   profit: {
-    label: "Profit",
+    label: "Lợi nhuận",
     color: "hsl(var(--chart-1))",
   },
   loss: {
-    label: "Loss",
+    label: "Thua lỗ",
     color: "hsl(var(--chart-2))",
   },
 } satisfies ChartConfig;
@@ -52,6 +52,19 @@ const recentSignals = [
   { symbol: "MSFT", type: "SELL", confidence: 0.99, status: "Executed" },
 ];
 
+const signalTypeDisplay: { [key: string]: string } = {
+  BUY: "MUA",
+  SELL: "BÁN",
+  HOLD: "GIỮ",
+};
+
+const statusDisplay: { [key: string]: string } = {
+    Executed: "Đã thực thi",
+    Pending: "Đang chờ",
+    Failed: "Thất bại"
+};
+
+
 export default function DashboardPage() {
   return (
     <div className="flex-1 space-y-4">
@@ -59,54 +72,54 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Total Signals
+              Tổng Tín hiệu
             </CardTitle>
             <Signal className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">1,234</div>
             <p className="text-xs text-muted-foreground">
-              +20.1% from last month
+              +20.1% so với tháng trước
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Active Models
+              Mô hình hoạt động
             </CardTitle>
             <Cpu className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">5</div>
             <p className="text-xs text-muted-foreground">
-              2 currently in training
+              2 đang được huấn luyện
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Execution Bots
+              Bot thực thi
             </CardTitle>
             <Bot className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">3</div>
             <p className="text-xs text-muted-foreground">
-              All systems operational
+              Tất cả hệ thống đang hoạt động
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Datasets</CardTitle>
+            <CardTitle className="text-sm font-medium">Bộ dữ liệu</CardTitle>
             <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">42</div>
             <p className="text-xs text-muted-foreground">
-              +5 since last week
+              +5 so với tuần trước
             </p>
           </CardContent>
         </Card>
@@ -116,10 +129,10 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="font-headline flex items-center">
               <TrendingUp className="mr-2" />
-              Signal Performance
+              Hiệu suất Tín hiệu
             </CardTitle>
             <CardDescription>
-              Monthly profit and loss overview.
+              Tổng quan lợi nhuận và thua lỗ hàng tháng.
             </CardDescription>
           </CardHeader>
           <CardContent className="pl-2">
@@ -144,7 +157,6 @@ export default function DashboardPage() {
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => value.slice(0, 3)}
                 />
                 <ChartTooltip
                   cursor={false}
@@ -170,19 +182,19 @@ export default function DashboardPage() {
         </Card>
         <Card className="col-span-4 lg:col-span-3">
           <CardHeader>
-            <CardTitle className="font-headline">Recent Signals</CardTitle>
+            <CardTitle className="font-headline">Tín hiệu Gần đây</CardTitle>
             <CardDescription>
-              The 5 most recently generated signals.
+              5 tín hiệu được tạo gần đây nhất.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Confidence</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
+                  <TableHead>Mã</TableHead>
+                  <TableHead>Loại</TableHead>
+                  <TableHead className="text-right">Độ tin cậy</TableHead>
+                  <TableHead className="text-right">Trạng thái</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -200,7 +212,7 @@ export default function DashboardPage() {
                         }
                         className="text-xs"
                       >
-                        {signal.type}
+                        {signalTypeDisplay[signal.type]}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">{`${(
@@ -212,7 +224,7 @@ export default function DashboardPage() {
                         }
                         className="bg-opacity-20"
                         >
-                            {signal.status}
+                            {statusDisplay[signal.status]}
                         </Badge>
                      </TableCell>
                   </TableRow>
