@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/tabs";
 import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback, memo, useMemo } from "react";
-import { useActionState } from 'react';
+import { useActionState, useFormStatus } from 'react';
 import { uploadFileAction, trainModelAction, autoLabelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -70,31 +70,29 @@ type UploadState = {
 
 const initialUploadState: UploadState = { status: 'idle', message: '' };
 
-function UploadButton() {
-    const { pending } = useFormStatus();
-    return (
-      <Button type="submit" className="w-full" variant="outline" disabled={pending}>
-        {pending ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
-          </>
-        ) : (
-          <>
-            <FileUp className="mr-2 h-4 w-4" /> Tải lên
-          </>
-        )}
-      </Button>
-    );
-  }
-  
-  import { useFormStatus } from 'react-dom';
-  
 function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Dataset, 'id'>, parsedData: CandlestickChartData[]) => void }) {
     const [state, formAction, isPending] = useActionState(uploadFileAction, initialUploadState);
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const isFirstRender = useRef(true);
     const hasBeenSuccessful = useRef(false);
+
+    function UploadButton() {
+        const { pending } = useFormStatus();
+        return (
+          <Button type="submit" className="w-full" variant="outline" disabled={pending}>
+            {pending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
+              </>
+            ) : (
+              <>
+                <FileUp className="mr-2 h-4 w-4" /> Tải lên
+              </>
+            )}
+          </Button>
+        );
+    }
 
     useEffect(() => {
         if (isFirstRender.current) {
@@ -522,7 +520,6 @@ export default function DatasetsPage() {
     autoLabelFormAction(formData);
   };
 
-
   return (
     <Tabs defaultValue="all">
       <div className="flex items-center">
@@ -719,7 +716,7 @@ export default function DatasetsPage() {
                          <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
-                        </Button>
+                        </AnnotationButton>
                     </div>
                 </CardFooter>
             </Card>
