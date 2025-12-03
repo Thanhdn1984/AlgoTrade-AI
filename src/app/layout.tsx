@@ -37,8 +37,8 @@ export default function RootLayout({
       >
         <ClientProviders>
           {children}
-          <Toaster />
         </ClientProviders>
+        <Toaster />
       </body>
     </html>
   );
