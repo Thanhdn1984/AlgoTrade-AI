@@ -42,4 +42,6 @@ export type AnnotationType = LabelType | LineLabelType;
 
 export interface CustomPriceLineOptions extends PriceLineOptions {
     annotationType: LineLabelType;
+    time: UTCTimestamp;
+    price2?: number; // For FVG bottom price
 }
