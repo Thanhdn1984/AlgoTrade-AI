@@ -44,8 +44,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import type { Dataset, CandlestickChartData } from "@/lib/types";
-import { useEffect, useRef, useState, useActionState } from "react";
-import { useFormStatus } from 'react-dom';
+import { useEffect, useRef, useState, useActionState, useCallback } from "react";
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -68,70 +67,73 @@ type UploadState = {
 const initialState: UploadState = { status: 'idle', message: '' };
 
 function UploadButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" className="w-full" variant="outline" disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
-        </>
-      ) : (
-        <>
-          <FileUp className="mr-2 h-4 w-4" /> Tải lên
-        </>
-      )}
-    </Button>
-  );
-}
-
-function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset, parsedData: CandlestickChartData[]) => void }) {
-  const [state, formAction] = useActionState(uploadFileAction, initialState);
-  const { toast } = useToast();
-  const formRef = useRef<HTMLFormElement>(null);
-  const lastProcessedId = useRef<string | null>(null);
-
-  useEffect(() => {
-    // Ensure we only process a successful upload once
-    if (state.status === 'success' && state.newDataset && state.parsedData && state.newDataset.id !== lastProcessedId.current) {
+    const { pending } = useFormStatus();
+    return (
+      <Button type="submit" className="w-full" variant="outline" disabled={pending}>
+        {pending ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
+          </>
+        ) : (
+          <>
+            <FileUp className="mr-2 h-4 w-4" /> Tải lên
+          </>
+        )}
+      </Button>
+    );
+  }
+  
+  // Custom hook to get useFormStatus outside of a <form>
+  import { useFormStatus } from 'react-dom';
+  
+  function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset, parsedData: CandlestickChartData[]) => void }) {
+    const [state, formAction] = useActionState(uploadFileAction, initialState);
+    const { toast } = useToast();
+    const formRef = useRef<HTMLFormElement>(null);
+    const lastProcessedId = useRef<string | null>(null);
+  
+    useEffect(() => {
+      // Ensure we only process a successful upload once
+      if (state.status === 'success' && state.newDataset && state.parsedData && state.newDataset.id !== lastProcessedId.current) {
+          toast({
+            title: 'Thành công!',
+            description: state.message,
+          });
+          onUploadSuccess(state.newDataset, state.parsedData);
+          formRef.current?.reset();
+          lastProcessedId.current = state.newDataset.id; // Mark as processed
+      } else if (state.status === 'error') {
         toast({
-          title: 'Thành công!',
+          variant: 'destructive',
+          title: 'Lỗi',
           description: state.message,
         });
-        onUploadSuccess(state.newDataset, state.parsedData);
-        formRef.current?.reset();
-        lastProcessedId.current = state.newDataset.id; // Mark as processed
-    } else if (state.status === 'error') {
-      toast({
-        variant: 'destructive',
-        title: 'Lỗi',
-        description: state.message,
-      });
-      lastProcessedId.current = null; // Reset on error
-    }
-  }, [state, toast, onUploadSuccess]);
-
-  return (
-    <Card>
-      <form ref={formRef} action={formAction}>
-        <CardHeader>
-          <CardTitle className="font-headline">Tải lên Dữ liệu</CardTitle>
-          <CardDescription>
-            Tải lên tệp CSV mới để tạo một bộ dữ liệu.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid w-full max-w-sm items-center gap-1.5">
-            <Label htmlFor="data-file">Tệp CSV</Label>
-            <Input id="data-file" name="data-file" type="file" required accept=".csv" />
-          </div>
-        </CardContent>
-        <CardFooter>
-          <UploadButton />
-        </CardFooter>
-      </form>
-    </Card>
-  );
-}
+        lastProcessedId.current = null; // Reset on error
+      }
+    }, [state, toast, onUploadSuccess]);
+  
+    return (
+      <Card>
+        <form ref={formRef} action={formAction}>
+          <CardHeader>
+            <CardTitle className="font-headline">Tải lên Dữ liệu</CardTitle>
+            <CardDescription>
+              Tải lên tệp CSV mới để tạo một bộ dữ liệu.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid w-full max-w-sm items-center gap-1.5">
+              <Label htmlFor="data-file">Tệp CSV</Label>
+              <Input id="data-file" name="data-file" type="file" required accept=".csv" />
+            </div>
+          </CardContent>
+          <CardFooter>
+            <UploadButton />
+          </CardFooter>
+        </form>
+      </Card>
+    );
+  }
 
 // --- Candlestick Chart Component ---
 function CandlestickChart({ 
@@ -260,7 +262,7 @@ export default function DatasetsPage() {
 
   const fullChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
   
-  const handleCrosshairMove = (param: MouseEventParams<'Candlestick'>) => {
+  const handleCrosshairMove = useCallback((param: MouseEventParams<'Candlestick'>) => {
     if (!param.point || !param.seriesData.size) {
         setHoveredDataPoint(null);
         return;
@@ -268,7 +270,7 @@ export default function DatasetsPage() {
     // The seriesData is a map, we get the first (and only) series' data
     const data = param.seriesData.values().next().value as CandlestickChartData;
     setHoveredDataPoint(data);
-  };
+  }, []);
 
 
   const handleSetDataset = (dataset: Dataset) => {
