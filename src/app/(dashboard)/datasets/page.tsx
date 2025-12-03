@@ -46,13 +46,15 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import type { Dataset, CandlestickChartData } from "@/lib/types";
-import { useEffect, useRef, useState, useActionState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useActionState } from 'react-dom';
 import { useFormStatus } from 'react-dom';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
 import { useTheme } from "next-themes";
+import { Slider } from "@/components/ui/slider";
 
 
 // --- Data Types ---
@@ -197,6 +199,7 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
     
     return () => {
       window.removeEventListener('resize', handleResize);
+      // Do not destroy the chart here to maintain state
     };
 
   }, [data, theme]);
@@ -441,14 +444,6 @@ export default function DatasetsPage() {
                 {activeDataset && fullChartData.length > 0 ? (
                     <div className="flex flex-col items-center">
                         <CandlestickChart data={fullChartData} currentIndex={currentIndex} />
-                        <div className="text-sm text-muted-foreground mt-4 text-center">
-                            <p>
-                                Điểm {currentIndex + 1} / {fullChartData.length}
-                            </p>
-                             {currentDataPoint && <p className="font-mono text-xs truncate" title={currentDataPoint.raw}>
-                                {currentDataPoint.raw}
-                            </p>}
-                        </div>
                     </div>
                 ) : (
                     <div className="flex items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
@@ -456,27 +451,40 @@ export default function DatasetsPage() {
                     </div>
                 )}
                 </CardContent>
-                <CardFooter className="flex justify-between items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={handlePrev} disabled={currentIndex === 0 || !activeDataset}>
-                    <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <div className="flex justify-center gap-2">
-                    <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('BUY')}>
-                        <ArrowUp className="h-5 w-5" />
-                        <span className="text-xs">Mua</span>
-                    </Button>
-                    <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset} onClick={() => handleLabel('HOLD')}>
-                        <Circle className="h-5 w-5" />
-                        <span className="text-xs">Giữ</span>
-                    </Button>
-                    <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('SELL')}>
-                        <ArrowDown className="h-5 w-5" />
-                        <span className="text-xs">Bán</span>
-                    </Button>
+                <CardFooter className="flex-col items-stretch gap-4">
+                    <div className="flex items-center justify-center gap-4">
+                        <Label htmlFor="data-slider" className="text-sm text-muted-foreground">
+                            Điểm {currentIndex + 1} / {fullChartData.length}
+                        </Label>
+                         <Slider
+                            id="data-slider"
+                            min={0}
+                            max={fullChartData.length > 0 ? fullChartData.length - 1 : 0}
+                            step={1}
+                            value={[currentIndex]}
+                            onValueChange={(value) => setCurrentIndex(value[0])}
+                            disabled={!activeDataset || fullChartData.length === 0}
+                            className="w-[60%]"
+                        />
+                         {currentDataPoint && <p className="font-mono text-xs text-muted-foreground truncate" title={currentDataPoint.raw}>
+                            {new Date(currentDataPoint.time * 1000).toLocaleString('vi-VN')}
+                        </p>}
                     </div>
-                    <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= fullChartData.length - 1}>
-                    <ChevronRight className="h-4 w-4" />
-                    </Button>
+
+                    <div className="flex justify-center gap-2">
+                        <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('BUY')}>
+                            <ArrowUp className="h-5 w-5" />
+                            <span className="text-xs">Mua</span>
+                        </Button>
+                        <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset} onClick={() => handleLabel('HOLD')}>
+                            <Circle className="h-5 w-5" />
+                            <span className="text-xs">Giữ</span>
+                        </Button>
+                        <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset} onClick={() => handleLabel('SELL')}>
+                            <ArrowDown className="h-5 w-5" />
+                            <span className="text-xs">Bán</span>
+                        </Button>
+                    </div>
                 </CardFooter>
             </Card>
         </div>
