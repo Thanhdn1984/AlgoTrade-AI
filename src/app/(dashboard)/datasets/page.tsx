@@ -25,11 +25,11 @@ import {
   ListFilter,
   Loader2,
   MoreHorizontal,
-  ThumbsDown,
-  ThumbsUp,
   Circle,
   ArrowUp,
   ArrowDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -53,10 +53,11 @@ import {
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
-import { useEffect, useRef, useActionState } from "react";
+import { useEffect, useRef, useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 
 const datasets: Dataset[] = [
@@ -90,43 +91,33 @@ const datasets: Dataset[] = [
   },
 ];
 
+// Dữ liệu giả cho biểu đồ, mỗi key tương ứng với một id bộ dữ liệu
+const mockChartData: { [key: string]: { time: string, value: number }[] } = {
+  "ds-001": [
+    { time: "14:00", value: 150 },
+    { time: "15:00", value: 155 },
+    { time: "16:00", value: 153 },
+    { time: "17:00", value: 160 },
+  ],
+  "ds-003": [
+    { time: "10:01.05", value: 5100 },
+    { time: "10:01.10", value: 5102 },
+    { time: "10:01.15", value: 5098 },
+    { time: "10:01.20", value: 5105 },
+  ],
+  // Thêm dữ liệu giả cho các bộ dữ liệu khác nếu cần
+};
+
+
 const statusDisplay: { [key: string]: string } = {
   Labeled: "Đã gán nhãn",
   Processing: "Đang xử lý",
   Raw: "Thô",
 };
 
-const chartData = [
-  { browser: "chrome", visitors: 275, fill: "var(--color-chrome)" },
-  { browser: "safari", visitors: 200, fill: "var(--color-safari)" },
-  { browser: "firefox", visitors: 187, fill: "var(--color-firefox)" },
-  { browser: "edge", visitors: 173, fill: "var(--color-edge)" },
-  { browser: "other", visitors: 90, fill: "var(--color-other)" },
-];
-
 const chartConfig = {
-  visitors: {
-    label: "Lượt truy cập",
-  },
-  chrome: {
-    label: "Chrome",
-    color: "hsl(var(--chart-1))",
-  },
-  safari: {
-    label: "Safari",
-    color: "hsl(var(--chart-2))",
-  },
-  firefox: {
-    label: "Firefox",
-    color: "hsl(var(--chart-3))",
-  },
-  edge: {
-    label: "Edge",
-    color: "hsl(var(--chart-4))",
-  },
-  other: {
-    label: "Khác",
-    color: "hsl(var(--chart-5))",
+  value: {
+    label: "Giá trị",
   },
 } satisfies ChartConfig;
 
@@ -194,6 +185,32 @@ function UploadCard() {
 
 
 export default function DatasetsPage() {
+  const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const currentChartData = activeDataset ? mockChartData[activeDataset.id] || [] : [];
+  const currentDataPoint = currentChartData[currentIndex];
+
+  const handleSetDataset = (dataset: Dataset) => {
+    if (dataset.status !== 'Processing') {
+        setActiveDataset(dataset);
+        setCurrentIndex(0);
+    }
+  }
+
+  const handleNext = () => {
+    if (currentIndex < currentChartData.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+
   return (
     <Tabs defaultValue="all">
       <div className="flex items-center">
@@ -252,7 +269,15 @@ export default function DatasetsPage() {
                   </TableHeader>
                   <TableBody>
                     {datasets.map((dataset) => (
-                      <TableRow key={dataset.id}>
+                      <TableRow 
+                        key={dataset.id}
+                        onClick={() => handleSetDataset(dataset)}
+                        className={cn(
+                            "cursor-pointer",
+                            activeDataset?.id === dataset.id && "bg-muted/50",
+                            dataset.status === "Processing" && "cursor-not-allowed opacity-50"
+                        )}
+                      >
                         <TableCell className="font-medium">
                           {dataset.name}
                         </TableCell>
@@ -289,6 +314,7 @@ export default function DatasetsPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Hành động</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleSetDataset(dataset)}>Gán nhãn thủ công</DropdownMenuItem>
                               <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
                               <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                               <DropdownMenuSeparator />
@@ -311,48 +337,62 @@ export default function DatasetsPage() {
               <CardHeader>
                 <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
                 <CardDescription>
-                  Dạy AI bằng cách gán nhãn cho dữ liệu của bạn.
+                  {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}` : "Chọn một bộ dữ liệu để bắt đầu"}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col items-center">
-                  <ChartContainer
-                    config={chartConfig}
-                    className="mx-auto aspect-square h-[150px]"
-                  >
-                    <BarChart accessibilityLayer data={chartData.slice(0, 1)}>
-                      <CartesianGrid vertical={false} />
-                      <XAxis
-                        dataKey="browser"
-                        tickLine={false}
-                        tickMargin={10}
-                        axisLine={false}
-                      />
-                      <ChartTooltip
-                        cursor={false}
-                        content={<ChartTooltipContent hideLabel />}
-                      />
-                      <Bar dataKey="visitors" radius={8} />
-                    </BarChart>
-                  </ChartContainer>
-                  <p className="text-sm text-muted-foreground mt-4">
-                    Nến lúc 2023-10-01 14:00 (EURUSD)
-                  </p>
-                </div>
+                {currentDataPoint ? (
+                    <div className="flex flex-col items-center">
+                    <ChartContainer
+                        config={chartConfig}
+                        className="mx-auto aspect-square h-[150px]"
+                    >
+                        <BarChart accessibilityLayer data={[currentDataPoint]}>
+                        <CartesianGrid vertical={false} />
+                        <XAxis
+                            dataKey="time"
+                            tickLine={false}
+                            tickMargin={10}
+                            axisLine={false}
+                        />
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent hideLabel />}
+                        />
+                        <Bar dataKey="value" fill="hsl(var(--primary))" radius={8} />
+                        </BarChart>
+                    </ChartContainer>
+                    <p className="text-sm text-muted-foreground mt-4">
+                        Dữ liệu tại: {currentDataPoint.time} ({currentIndex + 1} / {currentChartData.length})
+                    </p>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-center h-48 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                        <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
+                    </div>
+                )}
               </CardContent>
-              <CardFooter className="flex justify-center gap-2">
-                 <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col">
-                  <ArrowUp className="h-5 w-5" />
-                  <span className="text-xs">Mua</span>
-                </Button>
-                 <Button variant="outline" size="lg" className="h-12 w-20 flex-col">
-                  <Circle className="h-5 w-5" />
-                  <span className="text-xs">Giữ</span>
-                </Button>
-                <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col">
-                  <ArrowDown className="h-5 w-5" />
-                  <span className="text-xs">Bán</span>
-                </Button>
+              <CardFooter className="flex justify-between items-center gap-2">
+                 <Button variant="outline" size="icon" onClick={handlePrev} disabled={currentIndex === 0 || !activeDataset}>
+                    <ChevronLeft className="h-4 w-4" />
+                 </Button>
+                 <div className="flex justify-center gap-2">
+                    <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset}>
+                        <ArrowUp className="h-5 w-5" />
+                        <span className="text-xs">Mua</span>
+                    </Button>
+                    <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset}>
+                        <Circle className="h-5 w-5" />
+                        <span className="text-xs">Giữ</span>
+                    </Button>
+                    <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset}>
+                        <ArrowDown className="h-5 w-5" />
+                        <span className="text-xs">Bán</span>
+                    </Button>
+                 </div>
+                 <Button variant="outline" size="icon" onClick={handleNext} disabled={currentIndex >= currentChartData.length - 1 || !activeDataset}>
+                    <ChevronRight className="h-4 w-4" />
+                 </Button>
               </CardFooter>
             </Card>
           </div>
@@ -361,5 +401,3 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
-
-    
