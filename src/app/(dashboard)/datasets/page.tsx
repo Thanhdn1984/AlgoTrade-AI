@@ -45,17 +45,16 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Dataset } from "@/lib/types";
-import { useEffect, useRef, useState, useActionState, useMemo } from "react";
+import type { Dataset, CandlestickChartData } from "@/lib/types";
+import { useEffect, useRef, useState, useActionState } from "react";
 import { useFormStatus } from 'react-dom';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, type CandlestickData, LineStyle } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 
 
 // --- Data Types ---
-type CandlestickChartData = CandlestickData<UTCTimestamp> & { raw: string; index: number; };
 type ParsedData = { [key: string]: CandlestickChartData[] };
 
 
@@ -65,7 +64,7 @@ type UploadState = {
   status: 'idle' | 'success' | 'error';
   message: string;
   newDataset?: Dataset | null;
-  fileContent?: string | null;
+  parsedData?: CandlestickChartData[] | null;
 }
 
 const initialState: UploadState = { status: 'idle', message: '' };
@@ -93,88 +92,13 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   const formRef = useRef<HTMLFormElement>(null);
   const lastProcessedId = useRef<string | null>(null);
 
-  const parseCSV = (content: string): CandlestickChartData[] => {
-    const rows = content.split('\n').filter(row => row.trim() !== '');
-    if (rows.length < 2) return [];
-
-    const headers = rows.shift()!.split(/\s+|,/).map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
-
-    const findIndexFlexible = (possibleNames: string[]) => {
-      return headers.findIndex(header =>
-        possibleNames.some(name => header.includes(name))
-      );
-    };
-
-    const ohlcIndexes = {
-        open: findIndexFlexible(['open']),
-        high: findIndexFlexible(['high']),
-        low: findIndexFlexible(['low']),
-        close: findIndexFlexible(['close', 'last']),
-        date: findIndexFlexible(['date']),
-        time: findIndexFlexible(['time']),
-    };
-    
-    if (ohlcIndexes.open === -1 || ohlcIndexes.high === -1 || ohlcIndexes.low === -1 || ohlcIndexes.close === -1 || (ohlcIndexes.date === -1 && ohlcIndexes.time === -1) ) {
-        toast({
-            variant: 'destructive',
-            title: 'Lỗi Phân tích CSV',
-            description: `Không tìm thấy các cột OHLC + Thời gian cần thiết. Cần: Open, High, Low, Close, Date/Time. Tìm thấy: ${headers.join(', ')}`,
-        });
-        return [];
-    }
-    
-    return rows.map((row, index) => {
-        const values = row.trim().split(/\s+/).filter(Boolean);
-        
-        try {
-            const dateStr = ohlcIndexes.date !== -1 ? values[ohlcIndexes.date] : '';
-            const timeStr = ohlcIndexes.time !== -1 ? values[ohlcIndexes.time] : '';
-            
-            // Handle various date/time formats
-            const dateTimeString = `${dateStr.replace(/\./g, '-')} ${timeStr}`.trim();
-            const date = new Date(dateTimeString);
-            
-            // Convert to UTCTimestamp (seconds since epoch)
-            const timestamp = (date.getTime() / 1000) as UTCTimestamp;
-            
-            if (isNaN(timestamp)) {
-                // console.warn(`Invalid date format at row ${index + 2}: ${dateTimeString}`);
-                return null;
-            }
-
-            return {
-                time: timestamp,
-                open: parseFloat(values[ohlcIndexes.open]),
-                high: parseFloat(values[ohlcIndexes.high]),
-                low: parseFloat(values[ohlcIndexes.low]),
-                close: parseFloat(values[ohlcIndexes.close]),
-                raw: row,
-                index,
-            };
-        } catch (e) {
-            // console.warn(`Could not parse row ${index + 2}: ${row}`);
-            return null;
-        }
-    }).filter((point): point is CandlestickChartData => 
-        point !== null && 
-        !isNaN(point.open) && 
-        !isNaN(point.high) && 
-        !isNaN(point.low) && 
-        !isNaN(point.close)
-    ).sort((a, b) => a.time - b.time);
-  };
-
-
   useEffect(() => {
-    if (state.status === 'success' && state.newDataset && state.fileContent && state.newDataset.id !== lastProcessedId.current) {
+    if (state.status === 'success' && state.newDataset && state.parsedData && state.newDataset.id !== lastProcessedId.current) {
         toast({
           title: 'Thành công!',
           description: state.message,
         });
-        const parsedData = parseCSV(state.fileContent);
-        if (parsedData.length > 0) {
-            onUploadSuccess(state.newDataset, parsedData);
-        }
+        onUploadSuccess(state.newDataset, state.parsedData);
         formRef.current?.reset();
         lastProcessedId.current = state.newDataset.id;
     } else if (state.status === 'error') {
@@ -219,11 +143,10 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
   useEffect(() => {
     if (!chartContainerRef.current || data.length === 0) return;
 
-    // Initialize chart
     if (!chartApiRef.current) {
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: 500, // Increased height
+        height: 500,
         layout: {
           background: { color: 'transparent' },
           textColor: 'hsl(var(--foreground))',
@@ -234,7 +157,7 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
         },
         timeScale: {
           timeVisible: true,
-          secondsVisible: true,
+          secondsVisible: false,
         },
       });
       chartApiRef.current = chart;
@@ -248,19 +171,15 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
       });
     }
 
-    // Set data
     seriesApiRef.current?.setData(data);
 
-    // Handle resize
     const handleResize = () => {
       chartApiRef.current?.applyOptions({ width: chartContainerRef.current?.clientWidth });
     };
 
     window.addEventListener('resize', handleResize);
     
-    // Auto-scroll to current index
-    const currentPoint = data[currentIndex];
-    if (currentPoint) {
+    if (data[currentIndex]) {
       chartApiRef.current?.timeScale().scrollToPosition(currentIndex - (data.length > 50 ? 25 : 0), false);
     }
     
@@ -270,7 +189,6 @@ function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[]
 
   }, [data]);
   
-  // Update marker for current index
   useEffect(() => {
     const currentPoint = data[currentIndex];
      if (seriesApiRef.current && currentPoint) {

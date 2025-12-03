@@ -3,7 +3,9 @@
 import {generateTradeSignals} from '@/ai/flows/generate-trade-signals';
 import {z} from 'zod';
 import { revalidatePath } from 'next/cache';
-import type { Dataset } from './types';
+import type { Dataset, CandlestickChartData } from './types';
+import type { UTCTimestamp } from 'lightweight-charts';
+
 
 const generateSignalsSchema = z.object({
   dataset: z.string().min(1, 'Vui lòng chọn một bộ dữ liệu.'),
@@ -90,8 +92,71 @@ type UploadState = {
     status: 'idle' | 'success' | 'error';
     message: string;
     newDataset?: Dataset | null;
-    fileContent?: string | null;
+    parsedData?: CandlestickChartData[] | null;
 }
+
+const parseCSV = (content: string): CandlestickChartData[] => {
+    const rows = content.split('\n').filter(row => row.trim() !== '');
+    if (rows.length < 2) return [];
+
+    const headers = rows.shift()!.split(/\s+|,/).map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
+
+    const findIndexFlexible = (possibleNames: string[]) => {
+      return headers.findIndex(header =>
+        possibleNames.some(name => header.includes(name))
+      );
+    };
+
+    const ohlcIndexes = {
+        open: findIndexFlexible(['open']),
+        high: findIndexFlexible(['high']),
+        low: findIndexFlexible(['low']),
+        close: findIndexFlexible(['close', 'last']),
+        date: findIndexFlexible(['date']),
+        time: findIndexFlexible(['time']),
+    };
+    
+    if (ohlcIndexes.open === -1 || ohlcIndexes.high === -1 || ohlcIndexes.low === -1 || ohlcIndexes.close === -1 || (ohlcIndexes.date === -1 && ohlcIndexes.time === -1) ) {
+        throw new Error(`Không tìm thấy các cột OHLC + Thời gian cần thiết. Cần: Open, High, Low, Close, Date/Time. Tìm thấy: ${headers.join(', ')}`);
+    }
+    
+    return rows.map((row, index) => {
+        const values = row.trim().split(/\s+/).filter(Boolean);
+        
+        try {
+            const dateStr = ohlcIndexes.date !== -1 ? values[ohlcIndexes.date] : '';
+            const timeStr = ohlcIndexes.time !== -1 ? values[ohlcIndexes.time] : '';
+            
+            const dateTimeString = `${dateStr.replace(/\./g, '-')} ${timeStr}`.trim();
+            const date = new Date(dateTimeString);
+            
+            const timestamp = (date.getTime() / 1000) as UTCTimestamp;
+            
+            if (isNaN(timestamp)) {
+                return null;
+            }
+
+            return {
+                time: timestamp,
+                open: parseFloat(values[ohlcIndexes.open]),
+                high: parseFloat(values[ohlcIndexes.high]),
+                low: parseFloat(values[ohlcIndexes.low]),
+                close: parseFloat(values[ohlcIndexes.close]),
+                raw: row,
+                index,
+            };
+        } catch (e) {
+            return null;
+        }
+    }).filter((point): point is CandlestickChartData => 
+        point !== null && 
+        !isNaN(point.open) && 
+        !isNaN(point.high) && 
+        !isNaN(point.low) && 
+        !isNaN(point.close)
+    ).sort((a, b) => a.time - b.time);
+  };
+
 
 export async function uploadFileAction(prevState: UploadState, formData: FormData): Promise<UploadState> {
     try {
@@ -105,21 +170,25 @@ export async function uploadFileAction(prevState: UploadState, formData: FormDat
             }
         }
         
-        // Read file content
         const fileContent = await file.text();
+        const parsedData = parseCSV(fileContent);
 
-        // In a real app, you would save the file to cloud storage.
-        // For demo purposes, we pass the content back to the client.
+        if (parsedData.length === 0) {
+            return {
+                status: 'error',
+                message: 'Phân tích tệp CSV thất bại. Vui lòng kiểm tra định dạng tệp.'
+            }
+        }
+        
         console.log(`Đang "tải lên" tệp: ${file.name}, kích thước: ${file.size} bytes`);
         
-        // Giả lập độ trễ mạng
         await new Promise(resolve => setTimeout(resolve, 500));
         
         const newDataset: Dataset = {
             id: `ds-${Date.now()}`,
             name: file.name.replace('.csv', ''),
             status: 'Raw',
-            itemCount: fileContent.split('\n').length -1, // Estimate row count
+            itemCount: parsedData.length,
             createdAt: new Date().toISOString().split('T')[0],
         };
 
@@ -127,16 +196,16 @@ export async function uploadFileAction(prevState: UploadState, formData: FormDat
 
         return {
             status: 'success',
-            message: `Tệp "${file.name}" đã được tải lên thành công.`,
+            message: `Tệp "${file.name}" đã được tải lên và phân tích thành công.`,
             newDataset: newDataset,
-            fileContent: fileContent,
+            parsedData: parsedData,
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error(error);
         return {
             status: 'error',
-            message: 'Không thể tải tệp lên. Đã xảy ra lỗi không mong muốn.'
+            message: error.message || 'Không thể tải tệp lên. Đã xảy ra lỗi không mong muốn.'
         }
     }
 }

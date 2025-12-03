@@ -1,4 +1,5 @@
-// This file is empty in the original code.
+import type { UTCTimestamp } from 'lightweight-charts';
+
 export type TradeSignal = {
   symbol: string;
   signalType: 'BUY' | 'SELL' | 'HOLD';
@@ -22,4 +23,14 @@ export type Dataset = {
   status: 'Raw' | 'Processing' | 'Labeled';
   itemCount: number;
   createdAt: string;
+};
+
+export type CandlestickChartData = {
+    time: UTCTimestamp;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    raw: string;
+    index: number;
 };
