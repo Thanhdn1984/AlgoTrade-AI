@@ -34,3 +34,5 @@ export type CandlestickChartData = {
     raw: string;
     index: number;
 };
+
+export type LabelType = 'BUY' | 'SELL' | 'HOLD';

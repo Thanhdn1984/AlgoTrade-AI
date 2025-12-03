@@ -43,7 +43,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Dataset, CandlestickChartData } from "@/lib/types";
+import type { Dataset, CandlestickChartData, LabelType } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useActionState } from 'react';
 import { uploadFileAction } from "@/lib/actions";
@@ -143,10 +143,12 @@ function CandlestickChart({
   data,
   markers = [],
   onCrosshairMove,
+  onChartClick
 }: {
   data: CandlestickChartData[];
   markers?: LabelMarker[];
   onCrosshairMove: (param: MouseEventParams<'Candlestick'>) => void;
+  onChartClick: (param: MouseEventParams<'Candlestick'>) => void;
 }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<IChartApi | null>(null);
@@ -190,16 +192,14 @@ function CandlestickChart({
             wickDownColor: '#ef4444',
             wickUpColor: '#22c55e',
         });
-        chart.subscribeCrosshairMove(param => {
-            onCrosshairMove(param as MouseEventParams<'Candlestick'>);
-        });
+        chart.subscribeCrosshairMove(onCrosshairMove);
+        chart.subscribeClick(onChartClick);
 
     } else {
         chartApiRef.current.applyOptions(chartOptions);
     }
     
     seriesApiRef.current?.setData(data);
-    seriesApiRef.current?.setMarkers(markers);
     chartApiRef.current?.timeScale().fitContent();
 
 
@@ -213,7 +213,14 @@ function CandlestickChart({
       window.removeEventListener('resize', handleResize);
     };
 
-  }, [data, theme, markers, onCrosshairMove]);
+  }, [data, theme, onCrosshairMove, onChartClick]);
+
+   // Effect to update markers when they change
+   useEffect(() => {
+    if (seriesApiRef.current) {
+      seriesApiRef.current.setMarkers(markers);
+    }
+  }, [markers]);
 
   return <div ref={chartContainerRef} className="w-full h-[500px]" />;
 }
@@ -234,6 +241,7 @@ export default function DatasetsPage() {
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData | null>(null);
   const [labeledPoints, setLabeledPoints] = useState<LabeledPoints>({});
+  const [activeLabelMode, setActiveLabelMode] = useState<LabelType | null>(null);
 
 
   const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
@@ -285,60 +293,58 @@ export default function DatasetsPage() {
     setHoveredDataPoint(data);
   }, []);
 
+  const handleChartClick = useCallback((param: MouseEventParams<'Candlestick'>) => {
+      if (!activeDataset || !activeLabelMode || !param.seriesData.size) return;
+
+      const dataPoint = param.seriesData.values().next().value as CandlestickChartData;
+      if (!dataPoint) return;
+
+      let newMarker: LabelMarker;
+
+      switch (activeLabelMode) {
+          case 'BUY':
+              newMarker = { time: dataPoint.time, position: 'belowBar', color: '#22c55e', shape: 'arrowUp', text: 'Buy' };
+              break;
+          case 'SELL':
+              newMarker = { time: dataPoint.time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' };
+              break;
+          case 'HOLD':
+              newMarker = { time: dataPoint.time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5 };
+              break;
+          default:
+            return;
+      }
+
+      setLabeledPoints(prev => {
+          const currentPoints = prev[activeDataset.id] || [];
+          const otherPoints = currentPoints.filter(p => p.time !== dataPoint.time);
+          return {
+              ...prev,
+              [activeDataset.id]: [...otherPoints, newMarker]
+          };
+      });
+
+      // Exit labeling mode after placing a marker
+      setActiveLabelMode(null);
+  }, [activeLabelMode, activeDataset]);
+
 
   const handleSetDataset = (dataset: Dataset) => {
     if (dataset.status !== 'Processing') {
         setActiveDataset(dataset);
         setHoveredDataPoint(null);
+        setActiveLabelMode(null);
     }
   }
 
-  const handleLabel = (label: 'BUY' | 'SELL' | 'HOLD') => {
-    if (!activeDataset || !hoveredDataPoint) return;
-    
-    let newMarker: LabelMarker;
 
-    switch (label) {
-        case 'BUY':
-            newMarker = {
-                time: hoveredDataPoint.time,
-                position: 'belowBar',
-                color: '#22c55e',
-                shape: 'arrowUp',
-                text: 'Buy',
-            };
-            break;
-        case 'SELL':
-             newMarker = {
-                time: hoveredDataPoint.time,
-                position: 'aboveBar',
-                color: '#ef4444',
-                shape: 'arrowDown',
-                text: 'Sell',
-            };
-            break;
-        case 'HOLD':
-            newMarker = {
-                time: hoveredDataPoint.time,
-                position: 'belowBar',
-                color: '#6b7280',
-                shape: 'circle',
-                size: 0.5,
-            };
-            break;
+  const toggleLabelMode = (mode: LabelType) => {
+    if (activeLabelMode === mode) {
+      setActiveLabelMode(null); // Toggle off if already active
+    } else {
+      setActiveLabelMode(mode);
     }
-
-    setLabeledPoints(prev => {
-        const currentPoints = prev[activeDataset.id] || [];
-        // Prevent duplicate markers for the same point
-        const otherPoints = currentPoints.filter(p => p.time !== hoveredDataPoint.time);
-        return {
-            ...prev,
-            [activeDataset.id]: [...otherPoints, newMarker]
-        };
-    });
-
-  };
+  }
 
 
   return (
@@ -481,7 +487,7 @@ export default function DatasetsPage() {
                 <CardHeader>
                 <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
                 <CardDescription>
-                    {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}. Di chuột trên biểu đồ để chọn điểm dữ liệu.` : "Chọn một bộ dữ liệu từ bảng trên để bắt đầu"}
+                    {activeDataset ? `Chọn một chế độ (Mua/Bán/Giữ) sau đó nhấp vào biểu đồ để đặt nhãn.` : "Chọn một bộ dữ liệu từ bảng trên để bắt đầu"}
                 </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -491,6 +497,7 @@ export default function DatasetsPage() {
                             data={fullChartData} 
                             markers={currentMarkers}
                             onCrosshairMove={handleCrosshairMove} 
+                            onChartClick={handleChartClick}
                         />
                     </div>
                 ) : (
@@ -510,20 +517,38 @@ export default function DatasetsPage() {
                                 <span>C: {hoveredDataPoint.close.toFixed(2)}</span>
                             </div>
                         ) : (
-                             <p className="text-sm text-muted-foreground">Di chuyển chuột trên biểu đồ để xem chi tiết...</p>
+                             <p className="text-sm text-muted-foreground">{activeLabelMode ? `Chế độ ${activeLabelMode}: Nhấp vào biểu đồ để đặt nhãn.` : 'Di chuyển chuột trên biểu đồ để xem chi tiết.'}</p>
                         )}
                     </div>
 
                     <div className="flex justify-center gap-2">
-                        <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset || !hoveredDataPoint} onClick={() => handleLabel('BUY')}>
+                        <Button 
+                          variant={activeLabelMode === 'BUY' ? 'default' : 'outline'} 
+                          size="lg" 
+                          className={cn("h-12 w-20 flex-col", activeLabelMode === 'BUY' && 'border-green-500 ring-2 ring-green-500')} 
+                          disabled={!activeDataset} 
+                          onClick={() => toggleLabelMode('BUY')}
+                        >
                             <ArrowUp className="h-5 w-5" />
                             <span className="text-xs">Mua</span>
                         </Button>
-                        <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset || !hoveredDataPoint} onClick={() => handleLabel('HOLD')}>
+                        <Button 
+                          variant={activeLabelMode === 'HOLD' ? 'default' : 'outline'} 
+                          size="lg" 
+                          className={cn("h-12 w-20 flex-col", activeLabelMode === 'HOLD' && 'border-gray-500 ring-2 ring-gray-500')} 
+                          disabled={!activeDataset} 
+                          onClick={() => toggleLabelMode('HOLD')}
+                        >
                             <Circle className="h-5 w-5" />
                             <span className="text-xs">Giữ</span>
                         </Button>
-                        <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset || !hoveredDataPoint} onClick={() => handleLabel('SELL')}>
+                        <Button 
+                          variant={activeLabelMode === 'SELL' ? 'destructive' : 'outline'} 
+                          size="lg" 
+                          className={cn("h-12 w-20 flex-col", activeLabelMode === 'SELL' && 'border-red-500 ring-2 ring-red-500')} 
+                          disabled={!activeDataset} 
+                          onClick={() => toggleLabelMode('SELL')}
+                        >
                             <ArrowDown className="h-5 w-5" />
                             <span className="text-xs">Bán</span>
                         </Button>
