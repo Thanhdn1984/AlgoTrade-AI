@@ -50,7 +50,7 @@ import {
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
-import { useActionState, useEffect, useRef } from "react";
+import { useEffect, useRef, useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
@@ -151,7 +151,6 @@ function UploadCard() {
   const [state, formAction] = useActionState(uploadFileAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (state.status === 'success') {
@@ -181,7 +180,7 @@ function UploadCard() {
         <CardContent>
           <div className="grid w-full max-w-sm items-center gap-1.5">
             <Label htmlFor="data-file">Tệp CSV</Label>
-            <Input id="data-file" name="data-file" type="file" ref={fileInputRef} required accept=".csv" />
+            <Input id="data-file" name="data-file" type="file" required accept=".csv" />
           </div>
         </CardContent>
         <CardFooter>
