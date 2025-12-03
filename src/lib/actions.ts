@@ -92,7 +92,7 @@ const uploadFileSchema = z.object({
 type UploadState = {
     status: 'idle' | 'success' | 'error';
     message: string;
-    newDataset?: Dataset | null;
+    newDataset?: Omit<Dataset, 'id'> | null;
     parsedData?: CandlestickChartData[] | null;
 }
 
@@ -181,20 +181,14 @@ export async function uploadFileAction(prevState: UploadState, formData: FormDat
             }
         }
         
-        console.log(`Đang "tải lên" tệp: ${file.name}, kích thước: ${file.size} bytes`);
-        
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        const newDataset: Dataset = {
-            id: `ds-${Date.now()}`,
+        const newDataset: Omit<Dataset, 'id'> = {
             name: file.name.replace('.csv', ''),
             status: 'Raw',
             itemCount: parsedData.length,
             createdAt: new Date().toISOString().split('T')[0],
         };
-
-        // This action now only prepares the data. The component will handle writing to Firestore.
-        // revalidatePath('/datasets');
 
         return {
             status: 'success',

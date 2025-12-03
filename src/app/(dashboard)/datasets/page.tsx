@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCollection } from "@/firebase";
+import { useCollection } from "@/firebase/firestore/use-collection";
 import { collection, doc, setDoc, deleteDoc, addDoc } from "firebase/firestore";
 import { useFirestore } from "@/firebase";
 
@@ -66,7 +66,7 @@ type ParsedData = { [key: string]: CandlestickChartData[] };
 type UploadState = {
   status: 'idle' | 'success' | 'error';
   message: string;
-  newDataset?: Dataset | null;
+  newDataset?: Omit<Dataset, 'id'> | null;
   parsedData?: CandlestickChartData[] | null;
 }
 
@@ -91,42 +91,33 @@ function UploadButton() {
   
   import { useFormStatus } from 'react-dom';
   
-  function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset, parsedData: CandlestickChartData[]) => void }) {
+  function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Dataset, 'id'>, parsedData: CandlestickChartData[]) => void }) {
     const [state, formAction] = useActionState(uploadFileAction, initialUploadState);
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const lastProcessedId = useRef<string | null>(null);
-    const firestore = useFirestore();
   
     useEffect(() => {
-      if (state.status === 'success' && state.newDataset && state.parsedData && state.newDataset.id !== lastProcessedId.current) {
+      // Use message as a pseudo-ID to prevent re-triggering on re-renders
+      const processingId = state.message;
+
+      if (state.status === 'success' && state.newDataset && state.parsedData && processingId !== lastProcessedId.current) {
           toast({
             title: 'Thành công!',
             description: state.message,
           });
-          
-          if (firestore) {
-            const datasetDoc: FirebaseDataset = {
-              name: state.newDataset.name,
-              status: state.newDataset.status,
-              itemCount: state.newDataset.itemCount,
-              createdAt: state.newDataset.createdAt,
-            }
-            setDoc(doc(firestore, "datasets", state.newDataset.id), datasetDoc);
-          }
-
           onUploadSuccess(state.newDataset, state.parsedData);
           formRef.current?.reset();
-          lastProcessedId.current = state.newDataset.id; 
-      } else if (state.status === 'error') {
+          lastProcessedId.current = processingId; 
+      } else if (state.status === 'error' && processingId !== lastProcessedId.current) {
         toast({
           variant: 'destructive',
           title: 'Lỗi',
           description: state.message,
         });
-        lastProcessedId.current = null;
+        lastProcessedId.current = processingId;
       }
-    }, [state, toast, onUploadSuccess, firestore]);
+    }, [state, toast, onUploadSuccess]);
   
     return (
       <Card>
@@ -246,7 +237,7 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
     const chartApiRef = useRef<{ chart: IChartApi, series: ISeriesApi<'Candlestick'> } | null>(null);
     const { theme } = useTheme();
 
-     useEffect(() => {
+    useEffect(() => {
         if (!chartContainerRef.current) return;
         
         const isDark = theme === 'dark';
@@ -332,24 +323,23 @@ export default function DatasetsPage() {
   
   // UI State
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData & { price?: number } | null>(null);
-  const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
-
-  // Interaction State (managed with refs to prevent re-renders)
   const activeLabelModeRef = useRef<AnnotationType | null>(null);
+  const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
   
-  const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
-    // Data is now added to firestore via UploadCard
-    setParsedData(prev => ({ ...prev, [newDataset.id]: newParsedData }));
-  };
+  const handleAddDataset = useCallback(async (newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
+    if (!datasetsCollection) return;
+    try {
+      const docRef = await addDoc(datasetsCollection, newDatasetData);
+      setParsedData(prev => ({ ...prev, [docRef.id]: newParsedData }));
+    } catch (error) {
+      console.error("Error adding dataset to Firestore:", error);
+    }
+  }, [datasetsCollection]);
 
   const handleDeleteDataset = (datasetId: string) => {
     if (!firestore) return;
     deleteDoc(doc(firestore, "datasets", datasetId));
     
-    // Note: Deleting subcollections is a more complex operation, 
-    // often handled by a Firebase Cloud Function for atomicity.
-    // For this client-side demo, we'll just delete the parent.
-
     setParsedData(prev => {
         const newParsedData = { ...prev };
         delete newParsedData[datasetId];
@@ -421,14 +411,13 @@ export default function DatasetsPage() {
             break;
       }
 
-      if (newMarker) {
-         addDoc(collection(firestore, 'datasets', activeDataset.id, 'labeledPoints'), newMarker);
+      if (newMarker && activeDatasetPointsCollection) {
+         addDoc(activeDatasetPointsCollection, newMarker);
       }
       
-      // Toggle off after placing
       activeLabelModeRef.current = null;
       setActiveButton(null);
-  }, [activeDataset, firestore]);
+  }, [activeDataset, firestore, activeDatasetPointsCollection]);
 
   const getHelperText = () => {
     if (!activeDataset) return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
@@ -662,7 +651,7 @@ export default function DatasetsPage() {
                          <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)">
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
-                        </AnnotationButton>
+                        </Button>
                     </div>
                 </CardFooter>
             </Card>
