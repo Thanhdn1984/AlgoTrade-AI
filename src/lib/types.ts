@@ -36,12 +36,11 @@ export type CandlestickChartData = {
 };
 
 export type LabelType = 'BUY' | 'SELL' | 'HOLD';
-export type LineLabelType = 'BOS' | 'CHOCH' | 'FVG';
+export type LineLabelType = 'BOS' | 'CHOCH';
 export type AnnotationType = LabelType | LineLabelType;
 
 
 export interface CustomPriceLineOptions extends PriceLineOptions {
     annotationType: LineLabelType;
     time: UTCTimestamp;
-    price2?: number; // For FVG bottom price
 }
