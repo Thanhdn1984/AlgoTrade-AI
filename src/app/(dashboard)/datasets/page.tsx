@@ -184,9 +184,17 @@ export default function DatasetsPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const handleAddDataset = (newDataset: Dataset) => {
-    setDatasets(prev => [...prev, newDataset]);
+    setDatasets(prev => {
+      // Prevent adding duplicate datasets
+      if (prev.find(d => d.id === newDataset.id)) {
+        return prev;
+      }
+      return [...prev, newDataset];
+    });
     // Generate mock data for the new dataset
-    mockChartData[newDataset.id] = Array.from({ length: 100 }, (_, i) => ({ time: `T${i}`, value: Math.floor(Math.random() * (2000 - 1800 + 1)) + 1800 }));
+    if (!mockChartData[newDataset.id]) {
+      mockChartData[newDataset.id] = Array.from({ length: 100 }, (_, i) => ({ time: `T${i}`, value: Math.floor(Math.random() * (2000 - 1800 + 1)) + 1800 }));
+    }
   };
 
   const currentChartData = activeDataset ? mockChartData[activeDataset.id] || [] : [];
