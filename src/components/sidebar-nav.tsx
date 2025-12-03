@@ -1,4 +1,3 @@
-// This file is empty in the original code.
 "use client";
 
 import { usePathname } from "next/navigation";
@@ -11,7 +10,7 @@ import {
   LayoutDashboard,
   Settings,
   Signal,
-  Tag,
+  Link2,
 } from "lucide-react";
 import {
   Tooltip,
@@ -23,6 +22,7 @@ import {
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/datasets", icon: Database, label: "Datasets" },
+  { href: "/data-sources", icon: Link2, label: "Data Sources" },
   { href: "/signals", icon: Signal, label: "AI Signals" },
   { href: "/models", icon: Cpu, label: "Models" },
   { href: "/execution", icon: Bot, label: "Execution" },

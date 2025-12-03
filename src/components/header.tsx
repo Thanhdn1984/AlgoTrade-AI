@@ -1,4 +1,3 @@
-// This file is empty in the original code.
 "use client";
 
 import {
@@ -29,6 +28,7 @@ import { cn } from "@/lib/utils";
 const getTitleFromPathname = (pathname: string) => {
   if (pathname === '/dashboard') return 'Dashboard';
   if (pathname.startsWith('/datasets')) return 'Datasets';
+  if (pathname.startsWith('/data-sources')) return 'Data Sources';
   if (pathname.startsWith('/signals')) return 'AI Signals';
   if (pathname.startsWith('/models')) return 'Models';
   if (pathname.startsWith('/execution')) return 'Execution';
