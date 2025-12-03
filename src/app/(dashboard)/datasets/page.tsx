@@ -141,107 +141,6 @@ function UploadButton() {
   }
 
 
-// --- Candlestick Chart Component ---
-function CandlestickChart({
-  data,
-  markers = [],
-  onCrosshairMove,
-  onChartClick,
-  chartApiRef // Pass the ref to control the API
-}: {
-  data: CandlestickChartData[];
-  markers?: LabelMarker[];
-  onCrosshairMove: (param: MouseEventParams<'Candlestick'>) => void;
-  onChartClick: (param: MouseEventParams<'Candlestick'>) => void;
-  chartApiRef: React.MutableRefObject<{ chart: IChartApi | null; series: ISeriesApi<'Candlestick'> | null }>;
-}) {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const { theme } = useTheme();
-
-  // Effect to handle chart initialization, destruction, and event subscriptions
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-    
-    const isDark = theme === 'dark';
-    const chartOptions = {
-        layout: {
-            background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
-            textColor: isDark ? '#D1D5DB' : '#1F2937',
-        },
-        grid: {
-            vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
-            horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
-        },
-        timeScale: {
-            timeVisible: true,
-            secondsVisible: false,
-        },
-        crosshair: {
-            mode: CrosshairMode.Normal,
-        },
-        // panning and zooming
-        handleScroll: true,
-        handleScale: true,
-    };
-
-    const chart = createChart(chartContainerRef.current, {
-        ...chartOptions,
-        width: chartContainerRef.current.clientWidth,
-        height: 500,
-    });
-    
-    const series = chart.addCandlestickSeries({
-        upColor: '#22c55e', // green-500
-        downColor: '#ef4444', // red-500
-        borderDownColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
-    });
-
-    chartApiRef.current = { chart, series };
-
-    // Subscribe to events
-    chart.subscribeCrosshairMove(onCrosshairMove);
-    chart.subscribeClick(onChartClick);
-
-    const handleResize = () => {
-        chart?.applyOptions({ width: chartContainerRef.current?.clientWidth });
-    };
-    window.addEventListener('resize', handleResize);
-
-    // Cleanup function
-    return () => {
-        window.removeEventListener('resize', handleResize);
-        chart.unsubscribeCrosshairMove(onCrosshairMove);
-        chart.unsubscribeClick(onChartClick);
-        chart.remove();
-        chartApiRef.current = { chart: null, series: null };
-    };
-  }, [theme]); // Only re-create the chart if the theme changes.
-
-
-  // Effect to update data
-  useEffect(() => {
-    const series = chartApiRef.current?.series;
-    if (series && data) {
-        series.setData(data);
-    }
-  }, [data]);
-
-
-   // Effect to update markers when they change
-   useEffect(() => {
-    const series = chartApiRef.current?.series;
-    if (series) {
-      series.setMarkers(markers);
-    }
-  }, [markers]);
-
-  return <div ref={chartContainerRef} className="w-full h-[500px]" />;
-}
-
-
 // --- Training Component ---
 const initialTrainState: TrainModelState = { status: 'idle', message: '' };
 
@@ -357,11 +256,13 @@ export default function DatasetsPage() {
   const [activeLabelMode, setActiveLabelMode] = useState<AnnotationType | null>(null);
   const [fvgFirstClick, setFvgFirstClick] = useState<{ price: number; time: UTCTimestamp } | null>(null);
   
-  // Refs for chart objects
+  // Chart refs
+  const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<{ chart: IChartApi | null; series: ISeriesApi<'Candlestick'> | null }>({ chart: null, series: null });
   const priceLineRefs = useRef<{ [id: string]: IPriceLine[] }>({});
   const fvgTempLine = useRef<IPriceLine | null>(null);
-
+  
+  const { theme } = useTheme();
 
   const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
     setDatasets(prev => {
@@ -421,7 +322,7 @@ export default function DatasetsPage() {
   }, []);
 
   const handleChartClick = useCallback((param: MouseEventParams<'Candlestick'>) => {
-      if (!activeDataset || !activeLabelMode || !param.point) return;
+      if (!activeDataset || !activeLabelMode || !param.point || !param.seriesData.size) return;
 
       const dataPoint = param.seriesData.values().next().value as CandlestickChartData;
       if (!param.panePrices || param.panePrices.length === 0 || !dataPoint) return;
@@ -446,7 +347,6 @@ export default function DatasetsPage() {
         }
         setLabeledPoints(prev => {
             const currentPoints = prev[activeDataset.id] || [];
-            // Remove existing marker at the same time to allow replacement
             const otherPoints = currentPoints.filter(p => p.time !== time);
             const newPoints = [...otherPoints, newMarker];
             newPoints.sort((a, b) => (a.time as number) - (b.time as number));
@@ -510,7 +410,7 @@ export default function DatasetsPage() {
             }));
 
             // Clean up
-            if (fvgTempLine.current) series.removePriceLine(fvgTempLine.current);
+            if (fvgTempLine.current && series) series.removePriceLine(fvgTempLine.current);
             fvgTempLine.current = null;
             setFvgFirstClick(null);
             setActiveLabelMode(null);
@@ -533,6 +433,71 @@ export default function DatasetsPage() {
     }
   }
   
+  // Effect for chart lifecycle management
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    const isDark = theme === 'dark';
+    const chartOptions = {
+      layout: {
+        background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
+        textColor: isDark ? '#D1D5DB' : '#1F2937',
+      },
+      grid: {
+        vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
+        horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
+      },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      crosshair: { mode: CrosshairMode.Normal },
+      handleScroll: true,
+      handleScale: true,
+    };
+
+    const chart = createChart(chartContainerRef.current, {
+      ...chartOptions,
+      width: chartContainerRef.current.clientWidth,
+      height: 500,
+    });
+    
+    const series = chart.addCandlestickSeries({
+        upColor: '#22c55e', downColor: '#ef4444',
+        borderDownColor: '#ef4444', borderUpColor: '#22c55e',
+        wickDownColor: '#ef4444', wickUpColor: '#22c55e',
+    });
+
+    chartApiRef.current = { chart, series };
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+    chart.subscribeClick(handleChartClick);
+
+    const handleResize = () => chart.applyOptions({ width: chartContainerRef.current?.clientWidth });
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      chart.unsubscribeClick(handleChartClick);
+      chart.remove();
+      chartApiRef.current = { chart: null, series: null };
+    };
+  }, [theme, handleCrosshairMove, handleChartClick]); // Recreate chart on theme change
+
+  // Effect to update chart data
+  useEffect(() => {
+    const series = chartApiRef.current?.series;
+    if (series && fullChartData) {
+      series.setData(fullChartData);
+    }
+  }, [fullChartData]);
+
+  // Effect to update markers
+  useEffect(() => {
+    const series = chartApiRef.current?.series;
+    if (series) {
+      series.setMarkers(currentMarkers);
+    }
+  }, [currentMarkers]);
+
   // Effect to draw and manage price lines/areas
   useEffect(() => {
     const series = chartApiRef.current?.series;
@@ -550,25 +515,14 @@ export default function DatasetsPage() {
 
     currentLineOptions.forEach(options => {
         if (options.annotationType === 'FVG' && options.price2 !== undefined) {
-             // Draw FVG as two lines representing a region. 
             const topLine = series.createPriceLine({
-                price: options.price,
-                color: '#8b5cf6',
-                lineWidth: 1,
-                lineStyle: 2,
-                axisLabelVisible: true,
-                title: "FVG High",
+                price: options.price, color: '#8b5cf6', lineWidth: 1,
+                lineStyle: 2, axisLabelVisible: true, title: "FVG High",
             });
              const bottomLine = series.createPriceLine({
-                price: options.price2,
-                color: '#8b5cf6',
-                lineWidth: 1,
-                lineStyle: 2,
-                axisLabelVisible: true,
-                title: "FVG Low",
+                price: options.price2, color: '#8b5cf6', lineWidth: 1,
+                lineStyle: 2, axisLabelVisible: true, title: "FVG Low",
             });
-            // TODO: A true 'fill' requires a plugin or more complex rendering logic. 
-            // For now, two lines represent the zone.
             newLines.push(topLine, bottomLine);
 
         } else if (options.annotationType === 'BOS' || options.annotationType === 'CHOCH') {
@@ -578,22 +532,12 @@ export default function DatasetsPage() {
     });
 
     priceLineRefs.current[activeDataset.id] = newLines;
-    
-    // This cleanup function will run when the component unmounts or activeDataset changes
-    return () => {
-        const currentSeries = chartApiRef.current?.series; // re-get series in case it changed
-        if (currentSeries && activeDataset && priceLineRefs.current[activeDataset.id]) {
-            priceLineRefs.current[activeDataset.id].forEach(line => currentSeries.removePriceLine(line));
-            priceLineRefs.current[activeDataset.id] = [];
-        }
-    };
 
   }, [activeDataset, priceLines]);
 
 
   const toggleLabelMode = (mode: AnnotationType) => {
     const series = chartApiRef.current.series;
-    // If we're already in a mode, and click it again, cancel it.
     if(activeLabelMode === mode) {
         setActiveLabelMode(null);
         if (fvgTempLine.current && series) {
@@ -604,7 +548,6 @@ export default function DatasetsPage() {
         return;
     }
     
-    // If switching from FVG drawing mid-way, clean up.
     if(fvgFirstClick) {
         if (fvgTempLine.current && series) {
             series.removePriceLine(fvgTempLine.current);
@@ -787,15 +730,7 @@ export default function DatasetsPage() {
                 </CardHeader>
                 <CardContent>
                 {activeDataset && fullChartData.length > 0 ? (
-                    <div>
-                        <CandlestickChart 
-                            data={fullChartData} 
-                            markers={currentMarkers}
-                            onCrosshairMove={handleCrosshairMove} 
-                            onChartClick={handleChartClick}
-                            chartApiRef={chartApiRef}
-                        />
-                    </div>
+                    <div ref={chartContainerRef} className="w-full h-[500px]" />
                 ) : (
                     <div className="flex items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
                         <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
