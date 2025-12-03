@@ -45,23 +45,18 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import { Line, LineChart, CartesianGrid, XAxis, YAxis, ReferenceDot } from "recharts";
-import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
 import { useEffect, useRef, useState, useActionState, useMemo } from "react";
 import { useFormStatus } from 'react-dom';
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, type CandlestickData, LineStyle } from 'lightweight-charts';
+
 
 // --- Data Types ---
-type ChartDataPoint = { time: string; value: number; raw: string; index: number; };
-type ParsedData = { [key: string]: ChartDataPoint[] };
+type CandlestickChartData = CandlestickData<UTCTimestamp> & { raw: string; index: number; };
+type ParsedData = { [key: string]: CandlestickChartData[] };
 
 
 // --- Components for Upload ---
@@ -92,59 +87,85 @@ function UploadButton() {
   );
 }
 
-function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset, parsedData: ChartDataPoint[]) => void }) {
+function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset, parsedData: CandlestickChartData[]) => void }) {
   const [state, formAction] = useActionState(uploadFileAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const lastProcessedId = useRef<string | null>(null);
 
-  const parseCSV = (content: string): ChartDataPoint[] => {
+  const parseCSV = (content: string): CandlestickChartData[] => {
     const rows = content.split('\n').filter(row => row.trim() !== '');
     if (rows.length < 2) return [];
-    
+
     const headers = rows.shift()!.split(/\s+|,/).map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
-    
+
     const findIndexFlexible = (possibleNames: string[]) => {
-        return headers.findIndex(header =>
-            possibleNames.some(name => header.includes(name))
-        );
+      return headers.findIndex(header =>
+        possibleNames.some(name => header.includes(name))
+      );
     };
 
-    const closeIndex = findIndexFlexible(['close', 'last']);
-    const dateIndex = findIndexFlexible(['date']);
-    const timeIndex = findIndexFlexible(['time']);
-
-    if (closeIndex === -1 || (dateIndex === -1 && timeIndex === -1)) {
+    const ohlcIndexes = {
+        open: findIndexFlexible(['open']),
+        high: findIndexFlexible(['high']),
+        low: findIndexFlexible(['low']),
+        close: findIndexFlexible(['close', 'last']),
+        date: findIndexFlexible(['date']),
+        time: findIndexFlexible(['time']),
+    };
+    
+    if (ohlcIndexes.open === -1 || ohlcIndexes.high === -1 || ohlcIndexes.low === -1 || ohlcIndexes.close === -1 || (ohlcIndexes.date === -1 && ohlcIndexes.time === -1) ) {
         toast({
             variant: 'destructive',
             title: 'Lỗi Phân tích CSV',
-            description: `Không tìm thấy các cột cần thiết. Cần cột 'Close'/'Last' và 'Time'/'Date'. Tìm thấy: ${headers.join(', ')}`,
+            description: `Không tìm thấy các cột OHLC + Thời gian cần thiết. Cần: Open, High, Low, Close, Date/Time. Tìm thấy: ${headers.join(', ')}`,
         });
         return [];
     }
-
+    
     return rows.map((row, index) => {
         const values = row.trim().split(/\s+/).filter(Boolean);
-        if (values.length <= Math.max(closeIndex, dateIndex, timeIndex)) return null;
         
-        const value = parseFloat(values[closeIndex]);
-        
-        let time = `Điểm ${index + 1}`;
-        if (dateIndex !== -1 && timeIndex !== -1) {
-            time = `${values[dateIndex]} ${values[timeIndex]}`;
-        } else if (timeIndex !== -1) {
-            time = values[timeIndex];
-        } else if (dateIndex !== -1) {
-            time = values[dateIndex];
-        }
+        try {
+            const dateStr = ohlcIndexes.date !== -1 ? values[ohlcIndexes.date] : '';
+            const timeStr = ohlcIndexes.time !== -1 ? values[ohlcIndexes.time] : '';
+            
+            // Handle various date/time formats
+            const dateTimeString = `${dateStr.replace(/\./g, '-')} ${timeStr}`.trim();
+            const date = new Date(dateTimeString);
+            
+            // Convert to UTCTimestamp (seconds since epoch)
+            const timestamp = (date.getTime() / 1000) as UTCTimestamp;
+            
+            if (isNaN(timestamp)) {
+                // console.warn(`Invalid date format at row ${index + 2}: ${dateTimeString}`);
+                return null;
+            }
 
-        return { time, value, raw: row, index };
-    }).filter((point): point is ChartDataPoint => point !== null && !isNaN(point.value));
-};
+            return {
+                time: timestamp,
+                open: parseFloat(values[ohlcIndexes.open]),
+                high: parseFloat(values[ohlcIndexes.high]),
+                low: parseFloat(values[ohlcIndexes.low]),
+                close: parseFloat(values[ohlcIndexes.close]),
+                raw: row,
+                index,
+            };
+        } catch (e) {
+            // console.warn(`Could not parse row ${index + 2}: ${row}`);
+            return null;
+        }
+    }).filter((point): point is CandlestickChartData => 
+        point !== null && 
+        !isNaN(point.open) && 
+        !isNaN(point.high) && 
+        !isNaN(point.low) && 
+        !isNaN(point.close)
+    ).sort((a, b) => a.time - b.time);
+  };
 
 
   useEffect(() => {
-    // Prevent processing the same success state multiple times
     if (state.status === 'success' && state.newDataset && state.fileContent && state.newDataset.id !== lastProcessedId.current) {
         toast({
           title: 'Thành công!',
@@ -155,7 +176,6 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
             onUploadSuccess(state.newDataset, parsedData);
         }
         formRef.current?.reset();
-        // Mark this success state as processed
         lastProcessedId.current = state.newDataset.id;
     } else if (state.status === 'error') {
       toast({
@@ -163,7 +183,6 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         title: 'Lỗi',
         description: state.message,
       });
-      // Reset processed ID on error to allow retries
       lastProcessedId.current = null;
     }
   }, [state, toast, onUploadSuccess]);
@@ -191,6 +210,86 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   );
 }
 
+// --- Candlestick Chart Component ---
+function CandlestickChart({ data, currentIndex }: { data: CandlestickChartData[], currentIndex: number }) {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartApiRef = useRef<IChartApi | null>(null);
+  const seriesApiRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+
+  useEffect(() => {
+    if (!chartContainerRef.current || data.length === 0) return;
+
+    // Initialize chart
+    if (!chartApiRef.current) {
+      const chart = createChart(chartContainerRef.current, {
+        width: chartContainerRef.current.clientWidth,
+        height: 500, // Increased height
+        layout: {
+          background: { color: 'transparent' },
+          textColor: 'hsl(var(--foreground))',
+        },
+        grid: {
+          vertLines: { color: 'hsl(var(--border))' },
+          horzLines: { color: 'hsl(var(--border))' },
+        },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: true,
+        },
+      });
+      chartApiRef.current = chart;
+      seriesApiRef.current = chart.addCandlestickSeries({
+        upColor: 'hsl(var(--chart-1))',
+        downColor: 'hsl(var(--chart-2))',
+        borderDownColor: 'hsl(var(--chart-2))',
+        borderUpColor: 'hsl(var(--chart-1))',
+        wickDownColor: 'hsl(var(--chart-2))',
+        wickUpColor: 'hsl(var(--chart-1))',
+      });
+    }
+
+    // Set data
+    seriesApiRef.current?.setData(data);
+
+    // Handle resize
+    const handleResize = () => {
+      chartApiRef.current?.applyOptions({ width: chartContainerRef.current?.clientWidth });
+    };
+
+    window.addEventListener('resize', handleResize);
+    
+    // Auto-scroll to current index
+    const currentPoint = data[currentIndex];
+    if (currentPoint) {
+      chartApiRef.current?.timeScale().scrollToPosition(currentIndex - (data.length > 50 ? 25 : 0), false);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+
+  }, [data]);
+  
+  // Update marker for current index
+  useEffect(() => {
+    const currentPoint = data[currentIndex];
+     if (seriesApiRef.current && currentPoint) {
+        seriesApiRef.current.setMarkers([
+            {
+                time: currentPoint.time,
+                position: 'aboveBar',
+                color: 'hsl(var(--primary))',
+                shape: 'arrowDown',
+                text: `Điểm ${currentIndex + 1}`
+            }
+        ]);
+     }
+  }, [currentIndex, data]);
+
+
+  return <div ref={chartContainerRef} className="w-full h-[500px]" />;
+}
+
 
 // --- Main Page Component ---
 
@@ -200,15 +299,6 @@ const statusDisplay: { [key: string]: string } = {
   Raw: "Thô",
 };
 
-const chartConfig = {
-  value: {
-    label: "Giá trị",
-    color: "hsl(var(--chart-1))",
-  },
-} satisfies ChartConfig;
-
-const CHART_WINDOW_SIZE = 50;
-
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -216,8 +306,7 @@ export default function DatasetsPage() {
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const handleAddDataset = (newDataset: Dataset, newParsedData: ChartDataPoint[]) => {
-    // Prevent adding duplicates
+  const handleAddDataset = (newDataset: Dataset, newParsedData: CandlestickChartData[]) => {
     setDatasets(prev => {
         if (prev.find(d => d.id === newDataset.id)) {
             return prev;
@@ -245,13 +334,6 @@ export default function DatasetsPage() {
 
   const fullChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
   const currentDataPoint = fullChartData[currentIndex];
-
-  const chartDisplayData = useMemo(() => {
-    if (!activeDataset || !fullChartData.length) return [];
-    const start = Math.max(0, currentIndex - CHART_WINDOW_SIZE / 2);
-    const end = Math.min(fullChartData.length, start + CHART_WINDOW_SIZE);
-    return fullChartData.slice(start, end);
-  }, [activeDataset, fullChartData, currentIndex]);
 
 
   const handleSetDataset = (dataset: Dataset) => {
@@ -409,100 +491,57 @@ export default function DatasetsPage() {
                 <UploadCard onUploadSuccess={handleAddDataset} />
            </div>
         </div>
-
-        <Card>
-            <CardHeader>
-            <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
-            <CardDescription>
-                {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}` : "Chọn một bộ dữ liệu từ bảng trên để bắt đầu"}
-            </CardDescription>
-            </CardHeader>
-            <CardContent>
-            {activeDataset && currentDataPoint ? (
-                <div className="flex flex-col items-center">
-                    <ChartContainer
-                    config={chartConfig}
-                    className="w-full h-96"
-                >
-                    <LineChart
-                        data={chartDisplayData}
-                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                    >
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis 
-                            dataKey="time" 
-                            tick={false}
-                            axisLine={false}
-                        />
-                        <YAxis 
-                            domain={['dataMin', 'dataMax']}
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={5}
-                            width={80}
-                            tickFormatter={(value) => typeof value === 'number' ? value.toFixed(4) : ''}
-                        />
-                        <ChartTooltip 
-                            cursor={{stroke: 'hsl(var(--foreground))', strokeWidth: 1, strokeDasharray: "3 3"}}
-                            content={<ChartTooltipContent indicator="dot" />} 
-                        />
-                        <Line 
-                            type="monotone" 
-                            dataKey="value" 
-                            stroke="hsl(var(--primary))" 
-                            strokeWidth={2} 
-                            dot={false}
-                        />
-                        {currentDataPoint && (
-                            <ReferenceDot 
-                                x={currentDataPoint.time} 
-                                y={currentDataPoint.value} 
-                                r={5} 
-                                fill="hsl(var(--primary))" 
-                                stroke="hsl(var(--background))" 
-                                strokeWidth={2} 
-                            />
-                        )}
-                    </LineChart>
-                </ChartContainer>
-                <div className="text-sm text-muted-foreground mt-2 text-center">
-                    <p>
-                        Điểm {currentIndex + 1} / {fullChartData.length}
-                    </p>
-                    <p className="font-mono text-xs truncate" title={currentDataPoint.raw}>
-                        {currentDataPoint.raw}
-                    </p>
-                </div>
-                </div>
-            ) : (
-                <div className="flex items-center justify-center h-96 text-center text-muted-foreground border-2 border-dashed rounded-lg">
-                    <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
-                </div>
-            )}
-            </CardContent>
-            <CardFooter className="flex justify-between items-center gap-2">
-                <Button variant="outline" size="icon" onClick={handlePrev} disabled={currentIndex === 0 || !activeDataset}>
-                <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <div className="flex justify-center gap-2">
-                <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset}>
-                    <ArrowUp className="h-5 w-5" />
-                    <span className="text-xs">Mua</span>
-                </Button>
-                <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset}>
-                    <Circle className="h-5 w-5" />
-                    <span className="text-xs">Giữ</span>
-                </Button>
-                <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset}>
-                    <ArrowDown className="h-5 w-5" />
-                    <span className="text-xs">Bán</span>
-                </Button>
-                </div>
-                <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= fullChartData.length - 1}>
-                <ChevronRight className="h-4 w-4" />
-                </Button>
-            </CardFooter>
-        </Card>
+         <div className="grid grid-cols-1 gap-6">
+            <Card>
+                <CardHeader>
+                <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
+                <CardDescription>
+                    {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}` : "Chọn một bộ dữ liệu từ bảng trên để bắt đầu"}
+                </CardDescription>
+                </CardHeader>
+                <CardContent>
+                {activeDataset && fullChartData.length > 0 ? (
+                    <div className="flex flex-col items-center">
+                        <CandlestickChart data={fullChartData} currentIndex={currentIndex} />
+                        <div className="text-sm text-muted-foreground mt-4 text-center">
+                            <p>
+                                Điểm {currentIndex + 1} / {fullChartData.length}
+                            </p>
+                             {currentDataPoint && <p className="font-mono text-xs truncate" title={currentDataPoint.raw}>
+                                {currentDataPoint.raw}
+                            </p>}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                        <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
+                    </div>
+                )}
+                </CardContent>
+                <CardFooter className="flex justify-between items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={handlePrev} disabled={currentIndex === 0 || !activeDataset}>
+                    <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <div className="flex justify-center gap-2">
+                    <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset}>
+                        <ArrowUp className="h-5 w-5" />
+                        <span className="text-xs">Mua</span>
+                    </Button>
+                    <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset}>
+                        <Circle className="h-5 w-5" />
+                        <span className="text-xs">Giữ</span>
+                    </Button>
+                    <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset}>
+                        <ArrowDown className="h-5 w-5" />
+                        <span className="text-xs">Bán</span>
+                    </Button>
+                    </div>
+                    <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= fullChartData.length - 1}>
+                    <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </CardFooter>
+            </Card>
+        </div>
       </TabsContent>
     </Tabs>
   );
