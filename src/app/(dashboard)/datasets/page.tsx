@@ -100,15 +100,22 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   // Parse CSV content into chart data
   const parseCSV = (content: string): ChartDataPoint[] => {
     const rows = content.split('\n').filter(row => row.trim() !== '');
-    const headers = rows.shift()?.split(',').map(h => h.trim()) || [];
-    const closeIndex = headers.findIndex(h => h.toLowerCase() === 'close');
-    const timeIndex = headers.findIndex(h => h.toLowerCase() === 'time' || h.toLowerCase() === 'date');
+    if (rows.length < 2) return [];
 
+    const headers = rows.shift()!.split(',').map(h => h.trim().toLowerCase().replace(/[<>]/g, ''));
+
+    const findIndex = (possibleNames: string[]) => {
+      return headers.findIndex(h => possibleNames.includes(h));
+    };
+
+    const closeIndex = findIndex(['close', 'closeprice']);
+    const timeIndex = findIndex(['time', 'date']);
+    
     if (closeIndex === -1 || timeIndex === -1) {
         toast({
             variant: 'destructive',
             title: 'Lỗi Phân tích CSV',
-            description: 'Không tìm thấy cột "Close" và "Time/Date" trong tệp.',
+            description: 'Không tìm thấy các cột cần thiết (ví dụ: "Close", "Time", "Date") trong tệp.',
         });
         return [];
     }
