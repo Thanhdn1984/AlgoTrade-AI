@@ -198,6 +198,10 @@ function CandlestickChart({
 
     chartApiRef.current = { chart, series };
 
+    // Subscribe to events
+    chart.subscribeCrosshairMove(onCrosshairMove);
+    chart.subscribeClick(onChartClick);
+
     const handleResize = () => {
         chart?.applyOptions({ width: chartContainerRef.current?.clientWidth });
     };
@@ -205,10 +209,12 @@ function CandlestickChart({
 
     return () => {
         window.removeEventListener('resize', handleResize);
+        chart.unsubscribeCrosshairMove(onCrosshairMove);
+        chart.unsubscribeClick(onChartClick);
         chart.remove();
         chartApiRef.current = { chart: null, series: null };
     };
-  }, [theme, chartApiRef]);
+  }, [theme, onCrosshairMove, onChartClick, chartApiRef]);
 
 
   // Effect to update data
@@ -218,20 +224,6 @@ function CandlestickChart({
         series.setData(data);
     }
   }, [data, chartApiRef]);
-  
-  // Effect for event subscriptions
-  useEffect(() => {
-      const chart = chartApiRef.current.chart;
-      if (!chart) return;
-
-      chart.subscribeCrosshairMove(onCrosshairMove);
-      chart.subscribeClick(onChartClick);
-
-      return () => {
-          chart.unsubscribeCrosshairMove(onCrosshairMove);
-          chart.unsubscribeClick(onChartClick);
-      };
-  }, [onCrosshairMove, onChartClick, chartApiRef]);
 
 
    // Effect to update markers when they change
@@ -585,6 +577,7 @@ export default function DatasetsPage() {
     
     // This cleanup function will run when the component unmounts or activeDataset changes
     return () => {
+        const series = chartApiRef.current.series; // re-get series in case it changed
         if (series && priceLineRefs.current[activeDataset.id]) {
             priceLineRefs.current[activeDataset.id].forEach(line => series.removePriceLine(line));
             priceLineRefs.current[activeDataset.id] = [];
