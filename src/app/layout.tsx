@@ -3,7 +3,6 @@ import { Inter, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
 import { ClientProviders } from '@/components/client-providers';
-import { FirebaseClientProvider } from '@/firebase';
 
 const fontBody = Inter({ 
   subsets: ['latin'],
@@ -35,9 +34,7 @@ export default function RootLayout({
         )}
       >
         <ClientProviders>
-          <FirebaseClientProvider>
-            {children}
-          </FirebaseClientProvider>
+          {children}
         </ClientProviders>
       </body>
     </html>

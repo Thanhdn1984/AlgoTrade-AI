@@ -17,13 +17,8 @@ export type Model = {
   f1Score?: string;
 };
 
-// This is the type for the data returned from Firestore
-export type Dataset = FirebaseDataset & {
+export type Dataset = {
   id: string;
-}
-
-// This is the type for documents in the "datasets" collection
-export type FirebaseDataset = {
   name: string;
   status: 'Raw' | 'Processing' | 'Labeled';
   itemCount: number;

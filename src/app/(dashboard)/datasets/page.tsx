@@ -45,20 +45,36 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint, FirebaseDataset } from "@/lib/types";
+import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback, memo, useMemo } from "react";
 import { useActionState } from 'react';
 import { uploadFileAction, trainModelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker, type PriceLine, type IPriceLine } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCollection, useFirestore } from "@/firebase";
-import { collection, doc, setDoc, deleteDoc, addDoc } from "firebase/firestore";
 
 // --- Data Types ---
 type ParsedData = { [key: string]: CandlestickChartData[] };
+
+// --- Mock Data ---
+const initialDatasets: Dataset[] = [
+    {
+      id: "eurusd-2023",
+      name: "EURUSD_H1_2023.csv",
+      status: "Labeled",
+      itemCount: 8760,
+      createdAt: "2023-01-01",
+    },
+    {
+      id: "btcusd-2024",
+      name: "BTCUSD_M5_2024_Q1.csv",
+      status: "Raw",
+      itemCount: 25920,
+      createdAt: "2024-01-01",
+    },
+];
 
 // --- Components for Upload ---
 
@@ -96,24 +112,22 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
     const formRef = useRef<HTMLFormElement>(null);
   
     useEffect(() => {
-      if (isPending) return;
+        if (state.status === 'idle' || isPending) return;
 
-      if (state.status === 'success' && state.newDataset && state.parsedData) {
-          toast({
-            title: 'Thành công!',
-            description: state.message,
-          });
-          onUploadSuccess(state.newDataset, state.parsedData);
-          formRef.current?.reset();
-          // Reset state implicitly by form action finishing, but we could be more explicit if needed
-          // For this case, the `isPending` check prevents re-triggering.
-      } else if (state.status === 'error') {
-        toast({
-          variant: 'destructive',
-          title: 'Lỗi',
-          description: state.message,
-        });
-      }
+        if (state.status === 'success' && state.newDataset && state.parsedData) {
+            toast({
+                title: 'Thành công!',
+                description: state.message,
+            });
+            onUploadSuccess(state.newDataset, state.parsedData);
+            formRef.current?.reset();
+        } else if (state.status === 'error') {
+            toast({
+                variant: 'destructive',
+                title: 'Lỗi',
+                description: state.message,
+            });
+        }
     }, [state, toast, onUploadSuccess, isPending]);
   
     return (
@@ -308,36 +322,33 @@ const statusDisplay: { [key: string]: string } = {
 
 export default function DatasetsPage() {
   // Global state
-  const firestore = useFirestore();
-  const datasetsCollection = firestore ? collection(firestore, 'datasets') : null;
-  const { data: datasets = [], loading: loadingDatasets } = useCollection<Dataset>(datasetsCollection);
-  
+  const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
   const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
+  const [labeledPoints, setLabeledPoints] = useState<LabeledPoint[]>([]);
+  const [loadingDatasets, setLoadingDatasets] = useState(true);
 
-  const activeDatasetPointsCollection = (firestore && activeDataset) ? collection(firestore, 'datasets', activeDataset.id, 'labeledPoints') : null;
-  const { data: labeledPoints = [], loading: loadingPoints } = useCollection<LabeledPoint>(activeDatasetPointsCollection);
+  useEffect(() => {
+    // Simulate loading
+    setTimeout(() => setLoadingDatasets(false), 500);
+  }, []);
   
   // UI State
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData & { price?: number } | null>(null);
   const activeLabelModeRef = useRef<AnnotationType | null>(null);
   const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
   
- const handleAddDataset = useCallback(async (newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
-    if (!datasetsCollection) return;
-    try {
-        const docRef = await addDoc(datasetsCollection, newDatasetData);
-        // We are not storing parsedData in firestore, so just keep it in local state
-        setParsedData(prev => ({ ...prev, [docRef.id]: newParsedData }));
-    } catch (error) {
-        console.error("Error adding dataset to Firestore:", error);
-    }
-}, [datasetsCollection]);
+  const handleAddDataset = useCallback((newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
+    const newId = `dataset-${Date.now()}`;
+    const newDataset = { ...newDatasetData, id: newId };
+    
+    setDatasets(prev => [...prev, newDataset]);
+    setParsedData(prev => ({ ...prev, [newId]: newParsedData }));
+  }, []);
 
 
   const handleDeleteDataset = (datasetId: string) => {
-    if (!firestore) return;
-    deleteDoc(doc(firestore, "datasets", datasetId));
+    setDatasets(prev => prev.filter(d => d.id !== datasetId));
     
     setParsedData(prev => {
         const newParsedData = { ...prev };
@@ -347,6 +358,7 @@ export default function DatasetsPage() {
 
     if (activeDataset?.id === datasetId) {
         setActiveDataset(null);
+        setLabeledPoints([]);
     }
   };
 
@@ -357,6 +369,9 @@ export default function DatasetsPage() {
     setActiveButton(null);
 
     setActiveDataset(dataset);
+    // Here you would typically fetch labeled points for this dataset.
+    // For this local version, we'll just reset it.
+    setLabeledPoints([]);
     setHoveredDataPoint(null);
   }
 
@@ -380,7 +395,7 @@ export default function DatasetsPage() {
 
   const handleChartClick = useCallback((param: MouseEventParams) => {
       const currentMode = activeLabelModeRef.current;
-      if (!firestore || !currentMode || !activeDataset || !param.point || !param.seriesData || !param.seriesData.size) {
+      if (!currentMode || !activeDataset || !param.point || !param.seriesData || !param.seriesData.size) {
           return;
       }
       
@@ -410,13 +425,13 @@ export default function DatasetsPage() {
             break;
       }
 
-      if (newMarker && activeDatasetPointsCollection) {
-         addDoc(activeDatasetPointsCollection, newMarker);
+      if (newMarker) {
+         setLabeledPoints(prev => [...prev, { ...newMarker, id: `point-${Date.now()}` } as LabeledPoint]);
       }
       
       activeLabelModeRef.current = null;
       setActiveButton(null);
-  }, [activeDataset, firestore, activeDatasetPointsCollection]);
+  }, [activeDataset]);
 
   const getHelperText = () => {
     if (!activeDataset) return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
@@ -428,14 +443,15 @@ export default function DatasetsPage() {
   }
   
   const markers = useMemo(() => {
-    return labeledPoints.map(p => ({
+    const pointsForActiveDataset = activeDataset ? labeledPoints : [];
+    return pointsForActiveDataset.map(p => ({
         time: p.time,
         position: p.position,
         color: p.color,
         shape: p.shape,
         text: p.text
     }));
-  }, [labeledPoints]);
+  }, [labeledPoints, activeDataset]);
 
   const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => {
     return (
