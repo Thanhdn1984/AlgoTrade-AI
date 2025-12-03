@@ -214,7 +214,7 @@ function CandlestickChart({
         chart.remove();
         chartApiRef.current = { chart: null, series: null };
     };
-  }, [theme, onCrosshairMove, onChartClick, chartApiRef]);
+  }, [theme]); // Removed onCrosshairMove, onChartClick to prevent re-creation
 
 
   // Effect to update data
@@ -578,7 +578,7 @@ export default function DatasetsPage() {
     // This cleanup function will run when the component unmounts or activeDataset changes
     return () => {
         const series = chartApiRef.current.series; // re-get series in case it changed
-        if (series && priceLineRefs.current[activeDataset.id]) {
+        if (series && activeDataset && priceLineRefs.current[activeDataset.id]) {
             priceLineRefs.current[activeDataset.id].forEach(line => series.removePriceLine(line));
             priceLineRefs.current[activeDataset.id] = [];
         }
