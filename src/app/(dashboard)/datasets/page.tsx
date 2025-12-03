@@ -151,13 +151,13 @@ function CandlestickChart({
   onChartClick: (param: MouseEventParams<'Candlestick'>) => void;
 }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartApiRef = useRef<IChartApi | null>(null);
-  const seriesApiRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const chartRef = useRef<{ chart: IChartApi | null; series: ISeriesApi<'Candlestick'> | null }>({ chart: null, series: null });
   const { theme } = useTheme();
 
+  // Effect to handle chart initialization and destruction
   useEffect(() => {
-    if (!chartContainerRef.current || data.length === 0) return;
-
+    if (!chartContainerRef.current) return;
+    
     const isDark = theme === 'dark';
     const chartOptions = {
         layout: {
@@ -177,48 +177,79 @@ function CandlestickChart({
         },
     };
 
-    if (!chartApiRef.current) {
-        const chart = createChart(chartContainerRef.current, {
-            ...chartOptions,
-            width: chartContainerRef.current.clientWidth,
-            height: 500,
-        });
-        chartApiRef.current = chart;
-        seriesApiRef.current = chart.addCandlestickSeries({
-            upColor: '#22c55e', // green-500
-            downColor: '#ef4444', // red-500
-            borderDownColor: '#ef4444',
-            borderUpColor: '#22c55e',
-            wickDownColor: '#ef4444',
-            wickUpColor: '#22c55e',
-        });
-        chart.subscribeCrosshairMove(onCrosshairMove);
-        chart.subscribeClick(onChartClick);
-
-    } else {
-        chartApiRef.current.applyOptions(chartOptions);
-    }
+    const chart = createChart(chartContainerRef.current, {
+        ...chartOptions,
+        width: chartContainerRef.current.clientWidth,
+        height: 500,
+    });
     
-    seriesApiRef.current?.setData(data);
-    chartApiRef.current?.timeScale().fitContent();
+    const series = chart.addCandlestickSeries({
+        upColor: '#22c55e', // green-500
+        downColor: '#ef4444', // red-500
+        borderDownColor: '#ef4444',
+        borderUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
+        wickUpColor: '#22c55e',
+    });
 
+    chartRef.current = { chart, series };
 
     const handleResize = () => {
-      chartApiRef.current?.applyOptions({ width: chartContainerRef.current?.clientWidth });
+        chart?.applyOptions({ width: chartContainerRef.current?.clientWidth });
     };
-
     window.addEventListener('resize', handleResize);
-    
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
 
-  }, [data, theme, onCrosshairMove, onChartClick]);
+    return () => {
+        window.removeEventListener('resize', handleResize);
+        chart.remove();
+        chartRef.current = { chart: null, series: null };
+    };
+  }, []); // Empty dependency array ensures this runs only once
+
+  // Effect to apply theme changes
+  useEffect(() => {
+    if (!chartRef.current.chart) return;
+
+    const isDark = theme === 'dark';
+    chartRef.current.chart.applyOptions({
+        layout: {
+            background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
+            textColor: isDark ? '#D1D5DB' : '#1F2937',
+        },
+        grid: {
+            vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
+            horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
+        },
+    });
+  }, [theme]);
+
+
+  // Effect to update data and fit content
+  useEffect(() => {
+    if (chartRef.current.series && data) {
+        chartRef.current.series.setData(data);
+        chartRef.current.chart?.timeScale().fitContent();
+    }
+  }, [data]);
+  
+  // Effect for event subscriptions
+  useEffect(() => {
+      const chart = chartRef.current.chart;
+      if (!chart) return;
+
+      chart.subscribeCrosshairMove(onCrosshairMove);
+      chart.subscribeClick(onChartClick);
+
+      return () => {
+          chart.unsubscribeCrosshairMove(onCrosshairMove);
+          chart.unsubscribeClick(onChartClick);
+      };
+  }, [onCrosshairMove, onChartClick]);
 
    // Effect to update markers when they change
    useEffect(() => {
-    if (seriesApiRef.current) {
-      seriesApiRef.current.setMarkers(markers);
+    if (chartRef.current.series) {
+      chartRef.current.series.setMarkers(markers);
     }
   }, [markers]);
 
@@ -318,9 +349,11 @@ export default function DatasetsPage() {
       setLabeledPoints(prev => {
           const currentPoints = prev[activeDataset.id] || [];
           const otherPoints = currentPoints.filter(p => p.time !== dataPoint.time);
+          const newPoints = [...otherPoints, newMarker];
+          newPoints.sort((a, b) => (a.time as number) - (b.time as number));
           return {
               ...prev,
-              [activeDataset.id]: [...otherPoints, newMarker]
+              [activeDataset.id]: newPoints
           };
       });
 
@@ -544,8 +577,7 @@ export default function DatasetsPage() {
                         </Button>
                         <Button 
                           variant={activeLabelMode === 'SELL' ? 'destructive' : 'outline'} 
-                          size="lg" 
-                          className={cn("h-12 w-20 flex-col", activeLabelMode === 'SELL' && 'border-red-500 ring-2 ring-red-500')} 
+                          size="lg" className={cn("h-12 w-20 flex-col", activeLabelMode === 'SELL' && 'border-red-500 ring-2 ring-red-500')} 
                           disabled={!activeDataset} 
                           onClick={() => toggleLabelMode('SELL')}
                         >
