@@ -157,7 +157,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         formRef.current?.reset();
         // Mark this success state as processed
         lastProcessedId.current = state.newDataset.id;
-    } else if (state.status === 'error' && state.message && state.message !== (prevState as UploadState)?.message) {
+    } else if (state.status === 'error') {
       toast({
         variant: 'destructive',
         title: 'Lỗi',
@@ -166,7 +166,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
       // Reset processed ID on error to allow retries
       lastProcessedId.current = null;
     }
-  }, [state, toast, onUploadSuccess, prevState]);
+  }, [state, toast, onUploadSuccess]);
 
   return (
     <Card>
