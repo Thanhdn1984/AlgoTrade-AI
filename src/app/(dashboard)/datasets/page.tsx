@@ -91,11 +91,13 @@ function UploadButton() {
   import { useFormStatus } from 'react-dom';
   
 function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Dataset, 'id'>, parsedData: CandlestickChartData[]) => void }) {
-    const [state, formAction] = useActionState(uploadFileAction, initialUploadState);
+    const [state, formAction, isPending] = useActionState(uploadFileAction, initialUploadState);
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
   
     useEffect(() => {
+      if (isPending) return;
+
       if (state.status === 'success' && state.newDataset && state.parsedData) {
           toast({
             title: 'Thành công!',
@@ -103,6 +105,8 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
           });
           onUploadSuccess(state.newDataset, state.parsedData);
           formRef.current?.reset();
+          // Reset state implicitly by form action finishing, but we could be more explicit if needed
+          // For this case, the `isPending` check prevents re-triggering.
       } else if (state.status === 'error') {
         toast({
           variant: 'destructive',
@@ -110,7 +114,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
           description: state.message,
         });
       }
-    }, [state, toast, onUploadSuccess]);
+    }, [state, toast, onUploadSuccess, isPending]);
   
     return (
       <Card>
