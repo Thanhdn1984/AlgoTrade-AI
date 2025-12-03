@@ -46,7 +46,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint, FirebaseDataset } from "@/lib/types";
-import { useEffect, useRef, useState, useCallback, memo } from "react";
+import { useEffect, useRef, useState, useCallback, memo, useMemo } from "react";
 import { useActionState } from 'react';
 import { uploadFileAction, trainModelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
@@ -288,7 +288,7 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
             chart.remove();
             chartApiRef.current = null;
         };
-    }, [theme]); // Only re-create chart on theme change
+    }, [theme, onChartClick, onCrosshairMove]); 
 
     useEffect(() => {
         if (chartApiRef.current?.series) {
