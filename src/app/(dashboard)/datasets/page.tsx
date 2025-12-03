@@ -93,17 +93,25 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
     const [state, formAction, isPending] = useActionState(uploadFileAction, initialUploadState);
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
-  
-    useEffect(() => {
-        if (state.status === 'idle' || isPending) return;
+    const isFirstRender = useRef(true);
+    const hasBeenSuccessful = useRef(false);
 
-        if (state.status === 'success' && state.newDataset && state.parsedData) {
+    useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+
+        if (isPending) return;
+
+        if (state.status === 'success' && state.newDataset && state.parsedData && !hasBeenSuccessful.current) {
             toast({
                 title: 'Thành công!',
                 description: state.message,
             });
             onUploadSuccess(state.newDataset, state.parsedData);
             formRef.current?.reset();
+            hasBeenSuccessful.current = true; // Mark as successful to prevent re-triggering
         } else if (state.status === 'error') {
             toast({
                 variant: 'destructive',
@@ -112,10 +120,16 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
             });
         }
     }, [state, toast, onUploadSuccess, isPending]);
+
+     // Reset hasBeenSuccessful when the form is submitted again
+    const handleFormAction = (payload: FormData) => {
+        hasBeenSuccessful.current = false;
+        formAction(payload);
+    };
   
     return (
       <Card>
-        <form ref={formRef} action={formAction}>
+        <form ref={formRef} action={handleFormAction}>
           <CardHeader>
             <CardTitle className="font-headline">Tải lên Dữ liệu</CardTitle>
             <CardDescription>
@@ -149,20 +163,19 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
     activeDataset: Dataset | null;
     labeledPoints: LabeledPoint[];
 }) {
-    const [state, formAction] = useActionState(trainModelAction, initialTrainState);
-    const { pending } = useFormStatus();
+    const [state, formAction, isPending] = useActionState(trainModelAction, initialTrainState);
     const { toast } = useToast();
 
     useEffect(() => {
-        if (state.status === 'idle' || pending) return;
+        if (state.status === 'idle' || isPending) return;
 
         if (state.status === 'success') {
             toast({ title: 'Thành công', description: state.message });
         } else if (state.status === 'error') {
             toast({ variant: 'destructive', title: 'Lỗi', description: state.message });
         }
-    }, [state, toast, pending]);
-
+    }, [state, toast, isPending]);
+    
     const labeledDataCSV = useMemo(() => {
         if (!labeledPoints || labeledPoints.length === 0) return '';
         const points = labeledPoints || [];
@@ -174,8 +187,8 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
 
     return (
         <Card>
-            <form action={formAction}>
-                {activeDataset && <input type="hidden" name="datasetId" value={activeDataset.id} />}
+             <form action={formAction}>
+                <input type="hidden" name="datasetId" value={activeDataset?.id || ''} />
                 <input type="hidden" name="labeledDataCSV" value={labeledDataCSV} />
                 <CardHeader>
                     <CardTitle className="font-headline">Huấn luyện Mô hình</CardTitle>
@@ -195,9 +208,9 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
                     <Button 
                         type="submit" 
                         className="w-full" 
-                        disabled={pending || !activeDataset || labeledPoints.length === 0}
+                        disabled={isPending || !activeDataset || labeledPoints.length === 0}
                     >
-                         {pending ? (
+                         {isPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang huấn luyện...
                           </>
@@ -288,6 +301,46 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
     return <div ref={chartContainerRef} className="w-full h-[500px]" />;
 });
 CandlestickChart.displayName = 'CandlestickChart';
+
+
+// --- Annotation Button Component ---
+const AnnotationButton = ({ mode, children, tooltip, activeButton, activeDataset, isAutoLabeling, toggleLabelMode }: { 
+    mode: AnnotationType, 
+    children: React.ReactNode, 
+    tooltip: string,
+    activeButton: AnnotationType | null,
+    activeDataset: Dataset | null,
+    isAutoLabeling: boolean,
+    toggleLabelMode: (mode: AnnotationType) => void
+}) => {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={activeButton === mode ? 'default' : 'outline'}
+            size="lg"
+            className={cn(
+              "h-12 w-20 flex-col",
+              activeButton === mode &&
+                (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
+                mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
+                mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
+                'border-primary ring-2 ring-primary')
+            )}
+            disabled={!activeDataset || isAutoLabeling}
+            onClick={() => toggleLabelMode(mode)}
+          >
+            {children}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
 
 // --- Main Page Component ---
@@ -469,36 +522,6 @@ export default function DatasetsPage() {
     autoLabelFormAction(formData);
   };
 
-  const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={activeButton === mode ? 'default' : 'outline'}
-              size="lg"
-              className={cn(
-                "h-12 w-20 flex-col",
-                activeButton === mode &&
-                  (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
-                  mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
-                  mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
-                  'border-primary ring-2 ring-primary')
-              )}
-              disabled={!activeDataset || isAutoLabeling}
-              onClick={() => toggleLabelMode(mode)}
-            >
-              {children}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  };
-
 
   return (
     <Tabs defaultValue="all">
@@ -601,7 +624,7 @@ export default function DatasetsPage() {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuLabel>Hành động</DropdownMenuLabel>
                                   <DropdownMenuItem disabled={dataset.status === 'Processing'} onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn</DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={handleAutoLabel} disabled={isAutoLabeling || activeDataset?.id !== dataset.id}>
+                                  <DropdownMenuItem onSelect={(e) => handleAutoLabel(e)} disabled={isAutoLabeling || activeDataset?.id !== dataset.id}>
                                     {isAutoLabeling && activeDataset?.id === dataset.id ? (
                                       <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -677,23 +700,23 @@ export default function DatasetsPage() {
                     </div>
 
                     <div className="flex justify-center gap-2">
-                        <AnnotationButton mode="BUY" tooltip="Đánh dấu điểm Mua">
+                        <AnnotationButton mode="BUY" tooltip="Đánh dấu điểm Mua" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
                             <ArrowUp className="h-5 w-5" />
                             <span className="text-xs">Mua</span>
                         </AnnotationButton>
-                        <AnnotationButton mode="HOLD" tooltip="Đánh dấu điểm Giữ">
+                        <AnnotationButton mode="HOLD" tooltip="Đánh dấu điểm Giữ" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
                             <Circle className="h-5 w-5" />
                             <span className="text-xs">Giữ</span>
                         </AnnotationButton>
-                        <AnnotationButton mode="SELL" tooltip="Đánh dấu điểm Bán">
+                        <AnnotationButton mode="SELL" tooltip="Đánh dấu điểm Bán" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
                             <ArrowDown className="h-5 w-5" />
                             <span className="text-xs">Bán</span>
                         </AnnotationButton>
-                         <AnnotationButton mode="BOS" tooltip="Phá vỡ cấu trúc (Break of Structure)">
+                         <AnnotationButton mode="BOS" tooltip="Phá vỡ cấu trúc (Break of Structure)" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
                             <LineChartIcon className="h-5 w-5" />
                             <span className="text-xs">BOS</span>
-                        </Button>
-                         <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)">
+                        </AnnotationButton>
+                         <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)" {...{activeButton, activeDataset, isAutoLabeling, toggleLabelMode}}>
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
                         </Button>
