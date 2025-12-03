@@ -198,7 +198,7 @@ export default function DatasetsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {dataset.itemCount.toLocaleString()}
+                          {dataset.itemCount.toLocaleString('vi-VN')}
                         </TableCell>
                         <TableCell className="text-right">
                           {dataset.createdAt}
