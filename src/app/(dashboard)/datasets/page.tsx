@@ -30,7 +30,6 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
-  Dot,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -158,7 +157,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         formRef.current?.reset();
         // Mark this success state as processed
         lastProcessedId.current = state.newDataset.id;
-    } else if (state.status === 'error' && state.message) {
+    } else if (state.status === 'error' && state.message && state.message !== (prevState as UploadState)?.message) {
       toast({
         variant: 'destructive',
         title: 'Lỗi',
@@ -167,7 +166,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
       // Reset processed ID on error to allow retries
       lastProcessedId.current = null;
     }
-  }, [state, toast, onUploadSuccess]);
+  }, [state, toast, onUploadSuccess, prevState]);
 
   return (
     <Card>
@@ -309,9 +308,9 @@ export default function DatasetsPage() {
         </div>
       </div>
       <TabsContent value="all">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2">
-            <Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+           <div className="lg:col-span-2">
+               <Card>
               <CardHeader>
                 <CardTitle className="font-headline">Bộ dữ liệu</CardTitle>
                 <CardDescription>
@@ -332,168 +331,178 @@ export default function DatasetsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {datasets.map((dataset) => (
-                      <TableRow 
-                        key={dataset.id}
-                        onClick={() => handleSetDataset(dataset)}
-                        className={cn(
-                            "cursor-pointer",
-                            activeDataset?.id === dataset.id && "bg-muted/50",
-                            dataset.status === "Processing" && "cursor-not-allowed opacity-50"
-                        )}
-                      >
-                        <TableCell className="font-medium">
-                          {dataset.name}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              dataset.status === "Labeled"
-                                ? "default"
-                                : dataset.status === "Processing"
-                                ? "secondary"
-                                : "outline"
-                            }
+                    {datasets.length === 0 ? (
+                        <TableRow>
+                            <TableCell colSpan={5} className="h-24 text-center">
+                                Chưa có bộ dữ liệu nào. Tải lên một tệp để bắt đầu.
+                            </TableCell>
+                        </TableRow>
+                    ) : (
+                        datasets.map((dataset) => (
+                          <TableRow 
+                            key={dataset.id}
+                            onClick={() => handleSetDataset(dataset)}
+                            className={cn(
+                                "cursor-pointer",
+                                activeDataset?.id === dataset.id && "bg-muted/50",
+                                dataset.status === "Processing" && "cursor-not-allowed opacity-50"
+                            )}
                           >
-                            {statusDisplay[dataset.status]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {dataset.itemCount.toLocaleString('vi-VN')}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {dataset.createdAt}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                aria-haspopup="true"
-                                size="icon"
-                                variant="ghost"
+                            <TableCell className="font-medium">
+                              {dataset.name}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  dataset.status === "Labeled"
+                                    ? "default"
+                                    : dataset.status === "Processing"
+                                    ? "secondary"
+                                    : "outline"
+                                }
                               >
-                                <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Mở menu</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Hành động</DropdownMenuLabel>
-                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn thủ công</DropdownMenuItem>
-                              <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
-                              <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                className="text-destructive"
-                                onSelect={(e) => { e.preventDefault(); handleDeleteDataset(dataset.id); }}
-                              >
-                                Xóa
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                                {statusDisplay[dataset.status]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {dataset.itemCount.toLocaleString('vi-VN')}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {dataset.createdAt}
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    aria-haspopup="true"
+                                    size="icon"
+                                    variant="ghost"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">Mở menu</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>Hành động</DropdownMenuLabel>
+                                  <DropdownMenuItem disabled={dataset.status === 'Processing'} onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn</DropdownMenuItem>
+                                  <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
+                                  <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    className="text-destructive"
+                                    onSelect={(e) => { e.preventDefault(); handleDeleteDataset(dataset.id); }}
+                                  >
+                                    Xóa
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
             </Card>
-          </div>
-          <div className="space-y-6">
-            <UploadCard onUploadSuccess={handleAddDataset} />
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
-                <CardDescription>
-                  {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}` : "Chọn một bộ dữ liệu để bắt đầu"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {activeDataset && currentDataPoint ? (
-                  <div className="flex flex-col items-center">
-                     <ChartContainer
-                        config={chartConfig}
-                        className="w-full h-48"
-                    >
-                        <LineChart
-                            data={chartDisplayData}
-                             margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
-                        >
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                             <XAxis 
-                                dataKey="time" 
-                                tick={false}
-                                axisLine={false}
-                             />
-                            <YAxis 
-                                domain={['dataMin', 'dataMax']}
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={5}
-                                width={60}
-                            />
-                            <ChartTooltip 
-                                cursor={{stroke: 'hsl(var(--foreground))', strokeWidth: 1, strokeDasharray: "3 3"}}
-                                content={<ChartTooltipContent indicator="dot" />} 
-                            />
-                            <Line 
-                                type="monotone" 
-                                dataKey="value" 
-                                stroke="hsl(var(--primary))" 
-                                strokeWidth={2} 
-                                dot={false}
-                            />
-                            {currentDataPoint && (
-                                <ReferenceDot 
-                                    x={currentDataPoint.time} 
-                                    y={currentDataPoint.value} 
-                                    r={5} 
-                                    fill="hsl(var(--primary))" 
-                                    stroke="hsl(var(--background))" 
-                                    strokeWidth={2} 
-                                />
-                            )}
-                        </LineChart>
-                    </ChartContainer>
-                    <div className="text-sm text-muted-foreground mt-2 text-center">
-                        <p>
-                          Điểm {currentIndex + 1} / {fullChartData.length}
-                        </p>
-                        <p className="font-mono text-xs truncate" title={currentDataPoint.raw}>
-                            {currentDataPoint.raw}
-                        </p>
-                    </div>
-                  </div>
-                ) : (
-                    <div className="flex items-center justify-center h-48 text-center text-muted-foreground border-2 border-dashed rounded-lg">
-                        <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
-                    </div>
-                )}
-              </CardContent>
-              <CardFooter className="flex justify-between items-center gap-2">
-                 <Button variant="outline" size="icon" onClick={handlePrev} disabled={currentIndex === 0 || !activeDataset}>
-                    <ChevronLeft className="h-4 w-4" />
-                 </Button>
-                 <div className="flex justify-center gap-2">
-                    <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset}>
-                        <ArrowUp className="h-5 w-5" />
-                        <span className="text-xs">Mua</span>
-                    </Button>
-                    <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset}>
-                        <Circle className="h-5 w-5" />
-                        <span className="text-xs">Giữ</span>
-                    </Button>
-                    <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset}>
-                        <ArrowDown className="h-5 w-5" />
-                        <span className="text-xs">Bán</span>
-                    </Button>
-                 </div>
-                 <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= fullChartData.length - 1}>
-                    <ChevronRight className="h-4 w-4" />
-                 </Button>
-              </CardFooter>
-            </Card>
-          </div>
+           </div>
+           <div className="lg:col-span-1">
+                <UploadCard onUploadSuccess={handleAddDataset} />
+           </div>
         </div>
+
+        <Card>
+            <CardHeader>
+            <CardTitle className="font-headline">Gán nhãn Thủ công</CardTitle>
+            <CardDescription>
+                {activeDataset ? `Đang gán nhãn cho: ${activeDataset.name}` : "Chọn một bộ dữ liệu từ bảng trên để bắt đầu"}
+            </CardDescription>
+            </CardHeader>
+            <CardContent>
+            {activeDataset && currentDataPoint ? (
+                <div className="flex flex-col items-center">
+                    <ChartContainer
+                    config={chartConfig}
+                    className="w-full h-96"
+                >
+                    <LineChart
+                        data={chartDisplayData}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis 
+                            dataKey="time" 
+                            tick={false}
+                            axisLine={false}
+                        />
+                        <YAxis 
+                            domain={['dataMin', 'dataMax']}
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={5}
+                            width={80}
+                            tickFormatter={(value) => typeof value === 'number' ? value.toFixed(4) : ''}
+                        />
+                        <ChartTooltip 
+                            cursor={{stroke: 'hsl(var(--foreground))', strokeWidth: 1, strokeDasharray: "3 3"}}
+                            content={<ChartTooltipContent indicator="dot" />} 
+                        />
+                        <Line 
+                            type="monotone" 
+                            dataKey="value" 
+                            stroke="hsl(var(--primary))" 
+                            strokeWidth={2} 
+                            dot={false}
+                        />
+                        {currentDataPoint && (
+                            <ReferenceDot 
+                                x={currentDataPoint.time} 
+                                y={currentDataPoint.value} 
+                                r={5} 
+                                fill="hsl(var(--primary))" 
+                                stroke="hsl(var(--background))" 
+                                strokeWidth={2} 
+                            />
+                        )}
+                    </LineChart>
+                </ChartContainer>
+                <div className="text-sm text-muted-foreground mt-2 text-center">
+                    <p>
+                        Điểm {currentIndex + 1} / {fullChartData.length}
+                    </p>
+                    <p className="font-mono text-xs truncate" title={currentDataPoint.raw}>
+                        {currentDataPoint.raw}
+                    </p>
+                </div>
+                </div>
+            ) : (
+                <div className="flex items-center justify-center h-96 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                    <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
+                </div>
+            )}
+            </CardContent>
+            <CardFooter className="flex justify-between items-center gap-2">
+                <Button variant="outline" size="icon" onClick={handlePrev} disabled={currentIndex === 0 || !activeDataset}>
+                <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex justify-center gap-2">
+                <Button variant="outline" size="lg" className="h-12 w-20 border-green-500/50 text-green-500 hover:bg-green-500/10 hover:text-green-600 flex-col" disabled={!activeDataset}>
+                    <ArrowUp className="h-5 w-5" />
+                    <span className="text-xs">Mua</span>
+                </Button>
+                <Button variant="outline" size="lg" className="h-12 w-20 flex-col" disabled={!activeDataset}>
+                    <Circle className="h-5 w-5" />
+                    <span className="text-xs">Giữ</span>
+                </Button>
+                <Button variant="outline" size="lg" className="h-12 w-20 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600 flex-col" disabled={!activeDataset}>
+                    <ArrowDown className="h-5 w-5" />
+                    <span className="text-xs">Bán</span>
+                </Button>
+                </div>
+                <Button variant="outline" size="icon" onClick={handleNext} disabled={!activeDataset || currentIndex >= fullChartData.length - 1}>
+                <ChevronRight className="h-4 w-4" />
+                </Button>
+            </CardFooter>
+        </Card>
       </TabsContent>
     </Tabs>
   );
