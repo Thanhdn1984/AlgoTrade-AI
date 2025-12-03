@@ -156,34 +156,29 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
     const { toast } = useToast();
 
     useEffect(() => {
+        if (state.status === 'idle' || pending) return;
+
         if (state.status === 'success') {
             toast({ title: 'Thành công', description: state.message });
         } else if (state.status === 'error') {
             toast({ variant: 'destructive', title: 'Lỗi', description: state.message });
         }
-    }, [state, toast]);
+    }, [state, toast, pending]);
 
-
-    const handleTrain = (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        if (!activeDataset) return;
-
+    const labeledDataCSV = useMemo(() => {
+        if (!labeledPoints || labeledPoints.length === 0) return '';
         const points = labeledPoints || [];
-        const labeledData = [
+        return [
             'type,time,price,text', // header
             ...points.map(p => `POINT,${p.time},${p.position === 'aboveBar' ? 'high' : 'low'},${p.text}`),
         ].join('\n');
-        
-        const formData = new FormData();
-        formData.append('datasetId', activeDataset.id);
-        formData.append('labeledDataCSV', labeledData);
-        
-        formAction(formData);
-    };
+    }, [labeledPoints]);
 
     return (
         <Card>
-            <form onSubmit={handleTrain}>
+            <form action={formAction}>
+                {activeDataset && <input type="hidden" name="datasetId" value={activeDataset.id} />}
+                <input type="hidden" name="labeledDataCSV" value={labeledDataCSV} />
                 <CardHeader>
                     <CardTitle className="font-headline">Huấn luyện Mô hình</CardTitle>
                     <CardDescription>Sử dụng dữ liệu đã gán nhãn để dạy cho AI.</CardDescription>
