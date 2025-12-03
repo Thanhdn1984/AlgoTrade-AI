@@ -58,6 +58,41 @@ const statusIcons = {
   Archived: <Archive className="h-4 w-4 text-muted-foreground" />,
 };
 
+function TrainingProgress({ model }: { model: Model }) {
+  const [progress, setProgress] = useState(10);
+
+  useEffect(() => {
+    if (model.status === 'Training') {
+      const timer = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) {
+            clearInterval(timer);
+            return 95;
+          }
+          return prev + 5;
+        });
+      }, 800);
+      return () => clearInterval(timer);
+    }
+  }, [model.status]);
+
+  if (model.status !== 'Training') return null;
+
+  return (
+    <div>
+      <div className="flex justify-between mb-1">
+        <span className="text-sm font-medium">Tiến độ Huấn luyện</span>
+        <span className="text-sm font-medium text-muted-foreground">{progress}%</span>
+      </div>
+      <Progress value={progress} aria-label="Tiến độ huấn luyện" />
+      <div className="text-xs text-muted-foreground pt-2">
+        Epoch {Math.floor(progress / 5)}/20...
+      </div>
+    </div>
+  );
+}
+
+
 export default function ModelsPage() {
   const [lastUpdated, setLastUpdated] = useState('');
 
@@ -91,28 +126,24 @@ export default function ModelsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {model.status === 'Training' ? (
-                <div>
-                  <div className="flex justify-between mb-1">
-                     <span className="text-sm font-medium">Tiến độ Huấn luyện</span>
-                     <span className="text-sm font-medium text-muted-foreground">75%</span>
-                  </div>
-                  <Progress value={75} aria-label="Tiến độ huấn luyện" />
-                </div>
+                <TrainingProgress model={model} />
               ) : (
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Độ chính xác</p>
-                    <p className="font-semibold text-lg">{model.accuracy}%</p>
+                <>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Độ chính xác</p>
+                      <p className="font-semibold text-lg">{model.accuracy}%</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Điểm F1</p>
+                      <p className="font-semibold text-lg">{model.f1Score || "K/C"}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground">Điểm F1</p>
-                    <p className="font-semibold text-lg">{model.f1Score || "K/C"}</p>
+                  <div className="text-xs text-muted-foreground pt-2">
+                    Cập nhật lần cuối: {lastUpdated}
                   </div>
-                </div>
+                </>
               )}
-               <div className="text-xs text-muted-foreground pt-2">
-                 {model.status === 'Training' ? 'Epoch 15/20...' : `Cập nhật lần cuối: ${lastUpdated}`}
-               </div>
             </CardContent>
           </Card>
         ))}
