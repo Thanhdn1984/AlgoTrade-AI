@@ -128,24 +128,6 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 
-function UploadButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" className="w-full" variant="outline" disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
-        </>
-      ) : (
-        <>
-          <FileUp className="mr-2 h-4 w-4" /> Tải lên
-        </>
-      )}
-    </Button>
-  );
-}
-
-
 function UploadCard() {
   const initialState = { status: 'idle' as const, message: '' };
   const [state, formAction] = useActionState(uploadFileAction, initialState);
@@ -167,6 +149,23 @@ function UploadCard() {
       });
     }
   }, [state, toast]);
+
+  function UploadButton() {
+    const { pending } = useFormStatus();
+    return (
+      <Button type="submit" className="w-full" variant="outline" disabled={pending}>
+        {pending ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
+          </>
+        ) : (
+          <>
+            <FileUp className="mr-2 h-4 w-4" /> Tải lên
+          </>
+        )}
+      </Button>
+    );
+  }
 
   return (
     <Card>
