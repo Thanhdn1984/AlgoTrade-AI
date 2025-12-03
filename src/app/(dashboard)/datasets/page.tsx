@@ -96,6 +96,7 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
   const [state, formAction] = useActionState(uploadFileAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
+  const lastProcessedId = useRef<string | null>(null);
 
   // Parse CSV content into chart data
   const parseCSV = (content: string): ChartDataPoint[] => {
@@ -132,24 +133,29 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
 
 
   useEffect(() => {
-    if (state.status === 'success' && state.message) {
-      toast({
-        title: 'Thành công!',
-        description: state.message,
-      });
-      if (state.newDataset && state.fileContent) {
+    if (state.status === 'success' && state.newDataset && state.fileContent) {
+      // Check if we've already processed this successful upload
+      if (state.newDataset.id !== lastProcessedId.current) {
+        toast({
+          title: 'Thành công!',
+          description: state.message,
+        });
         const parsedData = parseCSV(state.fileContent);
         if (parsedData.length > 0) {
             onUploadSuccess(state.newDataset, parsedData);
         }
+        formRef.current?.reset();
+        // Mark this dataset ID as processed
+        lastProcessedId.current = state.newDataset.id;
       }
-      formRef.current?.reset();
     } else if (state.status === 'error' && state.message) {
       toast({
         variant: 'destructive',
         title: 'Lỗi',
         description: state.message,
       });
+      // Reset processed ID on error to allow retries
+      lastProcessedId.current = null;
     }
   }, [state, toast, onUploadSuccess]);
 
