@@ -158,7 +158,7 @@ function CandlestickChart({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
 
-  // Effect to handle chart initialization and destruction
+  // Effect to handle chart initialization, destruction, and event subscriptions
   useEffect(() => {
     if (!chartContainerRef.current) return;
     
@@ -179,6 +179,9 @@ function CandlestickChart({
         crosshair: {
             mode: CrosshairMode.Normal,
         },
+        // panning and zooming
+        handleScroll: true,
+        handleScale: true,
     };
 
     const chart = createChart(chartContainerRef.current, {
@@ -207,6 +210,7 @@ function CandlestickChart({
     };
     window.addEventListener('resize', handleResize);
 
+    // Cleanup function
     return () => {
         window.removeEventListener('resize', handleResize);
         chart.unsubscribeCrosshairMove(onCrosshairMove);
@@ -214,25 +218,25 @@ function CandlestickChart({
         chart.remove();
         chartApiRef.current = { chart: null, series: null };
     };
-  }, [theme]); // Removed onCrosshairMove, onChartClick to prevent re-creation
+  }, [theme]); // Only re-create the chart if the theme changes.
 
 
   // Effect to update data
   useEffect(() => {
-    const series = chartApiRef.current.series;
+    const series = chartApiRef.current?.series;
     if (series && data) {
         series.setData(data);
     }
-  }, [data, chartApiRef]);
+  }, [data]);
 
 
    // Effect to update markers when they change
    useEffect(() => {
-    const series = chartApiRef.current.series;
+    const series = chartApiRef.current?.series;
     if (series) {
       series.setMarkers(markers);
     }
-  }, [markers, chartApiRef]);
+  }, [markers]);
 
   return <div ref={chartContainerRef} className="w-full h-[500px]" />;
 }
@@ -531,7 +535,7 @@ export default function DatasetsPage() {
   
   // Effect to draw and manage price lines/areas
   useEffect(() => {
-    const series = chartApiRef.current.series;
+    const series = chartApiRef.current?.series;
     if (!series || !activeDataset) return;
     
     // Clear all existing price lines from the chart for the active dataset to prevent duplicates
@@ -577,9 +581,9 @@ export default function DatasetsPage() {
     
     // This cleanup function will run when the component unmounts or activeDataset changes
     return () => {
-        const series = chartApiRef.current.series; // re-get series in case it changed
-        if (series && activeDataset && priceLineRefs.current[activeDataset.id]) {
-            priceLineRefs.current[activeDataset.id].forEach(line => series.removePriceLine(line));
+        const currentSeries = chartApiRef.current?.series; // re-get series in case it changed
+        if (currentSeries && activeDataset && priceLineRefs.current[activeDataset.id]) {
+            priceLineRefs.current[activeDataset.id].forEach(line => currentSeries.removePriceLine(line));
             priceLineRefs.current[activeDataset.id] = [];
         }
     };
