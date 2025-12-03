@@ -30,6 +30,7 @@ import {
   ArrowDown,
   LineChart as LineChartIcon,
   Ruler,
+  Cpu,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -718,3 +719,5 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
+
+    
