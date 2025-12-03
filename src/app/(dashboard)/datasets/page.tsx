@@ -411,13 +411,15 @@ export default function DatasetsPage() {
       if (!activeDataset || !activeLabelMode || !param.point) return;
 
       const dataPoint = param.seriesData.values().next().value as CandlestickChartData;
+      // Ensure there's a valid price and data point before proceeding
+      if (!param.panePrices || param.panePrices.length === 0 || !dataPoint) return;
+
       const price = param.panePrices[0];
-      const time = dataPoint ? dataPoint.time : chartApiRef.current.chart?.getVisibleLogicalRange()?.from as UTCTimestamp;
+      const time = dataPoint.time;
       
       if (!time) return;
 
       if (activeLabelMode === 'BUY' || activeLabelMode === 'SELL' || activeLabelMode === 'HOLD') {
-        if(!dataPoint) return;
         let newMarker: LabelMarker;
 
         switch (activeLabelMode) {
@@ -719,5 +721,3 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
-
-    
