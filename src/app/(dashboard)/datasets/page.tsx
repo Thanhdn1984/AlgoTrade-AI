@@ -253,7 +253,7 @@ export default function DatasetsPage() {
   const [priceLines, setPriceLines] = useState<{ [key: string]: CustomPriceLineOptions[] }>({});
   
   // UI State
-  const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData | null>(null);
+  const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData & { price?: number } | null>(null);
   const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
 
   // Interaction State (managed with refs to prevent re-renders)
@@ -322,195 +322,185 @@ export default function DatasetsPage() {
     setHoveredDataPoint(null);
   }
 
-  const handleCrosshairMove = useCallback((param: MouseEventParams<'Candlestick'>) => {
-    if (!param.point || !param.seriesData || !param.seriesData.size) {
-        setHoveredDataPoint(null);
-        return;
-    }
-    // Accessing the map correctly
-    const data = param.seriesData.values().next().value as CandlestickChartData;
-    const price = param.panePrices?.[0];
-    if (data) {
-        setHoveredDataPoint({...data, price});
-    }
-  }, []);
-
-  const handleChartClick = useCallback((param: MouseEventParams<'Candlestick'>) => {
-    const currentMode = activeLabelModeRef.current;
-    if (!currentMode || !param.point || !param.seriesData || !param.seriesData.size) {
-        return;
-    }
-    
-    const dataPoint = param.seriesData.values().next().value as CandlestickChartData;
-    if (!dataPoint || !param.panePrices || param.panePrices.length === 0) {
-        return;
-    }
-    const price = param.panePrices[0];
-    const time = dataPoint.time;
-
-    // --- Handle Point Markers ---
-    if (currentMode === 'BUY' || currentMode === 'SELL' || currentMode === 'HOLD') {
-        const newMarker: LabelMarker = currentMode === 'BUY'
-            ? { time, position: 'belowBar', color: '#22c55e', shape: 'arrowUp', text: 'Buy' }
-            : currentMode === 'SELL'
-            ? { time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' }
-            : { time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5, text: 'Hold' };
-
-        setLabeledPoints(prev => {
-            const currentDatasetId = activeDataset?.id;
-            if (!currentDatasetId) return prev;
-            const currentPoints = prev[currentDatasetId] || [];
-            // Remove any existing marker at the same timestamp before adding the new one
-            const otherPoints = currentPoints.filter(p => p.time !== time);
-            const newPoints = [...otherPoints, newMarker];
-            newPoints.sort((a, b) => (a.time as number) - (b.time as number));
-            return { ...prev, [currentDatasetId]: newPoints };
-        });
-        
-        activeLabelModeRef.current = null;
-        setActiveButton(null);
-    }
-    // --- Handle Line Markers ---
-    else if (currentMode === 'BOS' || currentMode === 'CHOCH') {
-        const lineOptions: CustomPriceLineOptions = {
-            price,
-            color: currentMode === 'BOS' ? '#3b82f6' : '#f97316',
-            lineWidth: 2,
-            lineStyle: 2, // Dashed
-            axisLabelVisible: true,
-            title: `${currentMode}-${(Math.random() * 1000).toFixed(0)}`,
-            annotationType: currentMode,
-            time: time, // Although not used for drawing, good to store context
-        };
-
-        setPriceLines(prev => {
-            const currentDatasetId = activeDataset?.id;
-            if (!currentDatasetId) return prev;
-            return {
-                ...prev,
-                [currentDatasetId]: [...(prev[currentDatasetId] || []), lineOptions]
-            };
-        });
-
-        activeLabelModeRef.current = null;
-        setActiveButton(null);
-    }
-    // --- Handle FVG Area ---
-    else if (currentMode === 'FVG') {
-        const series = seriesApiRef.current;
-        if (!series) return;
-
-        if (!fvgFirstClickRef.current) {
-            // First click: set start point and draw a temporary line
-            fvgFirstClickRef.current = { price, time };
-            if (fvgTempLineRef.current) {
-                series.removePriceLine(fvgTempLineRef.current);
-            }
-            const tempLine = series.createPriceLine({ price, color: '#8b5cf6', lineWidth: 2, lineStyle: 3, axisLabelVisible: true, title: 'FVG Start' });
-            fvgTempLineRef.current = tempLine;
-        } else {
-            // Second click: complete the FVG
-            const top = Math.max(fvgFirstClickRef.current.price, price);
-            const bottom = Math.min(fvgFirstClickRef.current.price, price);
-            const fvgLineOptions: CustomPriceLineOptions = {
-                price: top,
-                price2: bottom,
-                color: 'rgba(139, 92, 246, 0.2)',
-                lineWidth: 1,
-                lineStyle: 0,
-                axisLabelVisible: false,
-                title: `FVG-${(Math.random() * 1000).toFixed(0)}`,
-                annotationType: 'FVG',
-                time: fvgFirstClickRef.current.time,
-            };
-            
-            setPriceLines(prev => {
-                const currentDatasetId = activeDataset?.id;
-                if (!currentDatasetId) return prev;
-                return { ...prev, [currentDatasetId]: [...(prev[currentDatasetId] || []), fvgLineOptions] };
-            });
-
-            // Cleanup
-            if (fvgTempLineRef.current) {
-                series.removePriceLine(fvgTempLineRef.current);
-            }
-            fvgTempLineRef.current = null;
-            fvgFirstClickRef.current = null;
-            activeLabelModeRef.current = null;
-            setActiveButton(null);
-        }
-    }
-  }, [activeDataset]);
-
   const toggleLabelMode = (mode: AnnotationType) => {
+    // If clicking the same button, toggle off
     if (activeLabelModeRef.current === mode) {
-        // If clicking the same button, toggle off
         activeLabelModeRef.current = null;
         setActiveButton(null);
+        // Clean up FVG temp state if any
         if (fvgTempLineRef.current && seriesApiRef.current) {
             seriesApiRef.current.removePriceLine(fvgTempLineRef.current);
+            fvgTempLineRef.current = null;
         }
         fvgFirstClickRef.current = null;
     } else {
         // Switching to a new mode
         activeLabelModeRef.current = mode;
         setActiveButton(mode);
-        // Clean up previous mode's temp state if any
-        if (fvgTempLineRef.current && seriesApiRef.current) {
-            seriesApiRef.current.removePriceLine(fvgTempLineRef.current);
+        // Clean up previous FVG temp state if any
+        if (mode !== 'FVG' && fvgTempLineRef.current && seriesApiRef.current) {
+             seriesApiRef.current.removePriceLine(fvgTempLineRef.current);
+             fvgTempLineRef.current = null;
         }
         fvgFirstClickRef.current = null;
     }
-  }
+  };
 
-  // Effect for chart lifecycle management
+
+  // --- Chart Effects ---
+
+  // Effect for chart lifecycle and event subscription
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const isDark = theme === 'dark';
     const chartOptions = {
-      layout: {
-        background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
-        textColor: isDark ? '#D1D5DB' : '#1F2937',
-      },
-      grid: {
-        vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
-        horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
-      },
-      timeScale: { timeVisible: true, secondsVisible: false },
-      crosshair: { mode: CrosshairMode.Normal },
+        layout: {
+            background: { type: ColorType.Solid, color: isDark ? '#19191f' : '#ffffff' },
+            textColor: isDark ? '#D1D5DB' : '#1F2937',
+        },
+        grid: {
+            vertLines: { color: isDark ? '#374151' : '#E5E7EB' },
+            horzLines: { color: isDark ? '#374151' : '#E5E7EB' },
+        },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        crosshair: { mode: CrosshairMode.Normal },
     };
 
-    const chart = createChart(chartContainerRef.current, {
-      ...chartOptions,
-      width: chartContainerRef.current.clientWidth,
-      height: 500,
-    });
+    const chart = createChart(chartContainerRef.current, chartOptions);
+    chartApiRef.current = chart;
     
     const series = chart.addCandlestickSeries({
         upColor: '#22c55e', downColor: '#ef4444',
         borderDownColor: '#ef4444', borderUpColor: '#22c55e',
         wickDownColor: '#ef4444', wickUpColor: '#22c55e',
     });
-
-    chartApiRef.current = chart;
     seriesApiRef.current = series;
 
-    chart.subscribeCrosshairMove(handleCrosshairMove);
+    const handleCrosshairMove = (param: MouseEventParams) => {
+        if (!param.point || !param.seriesData || !param.seriesData.size) {
+            setHoveredDataPoint(null);
+            return;
+        }
+        const data = param.seriesData.values().next().value as CandlestickChartData;
+        const price = param.panePrices?.[0];
+        if (data) {
+            setHoveredDataPoint({...data, price});
+        }
+    };
+    
+    const handleChartClick = (param: MouseEventParams) => {
+        const currentMode = activeLabelModeRef.current;
+        if (!currentMode || !param.point || !param.seriesData || !param.seriesData.size) {
+            return;
+        }
+        
+        const dataPoint = param.seriesData.values().next().value as CandlestickChartData;
+        if (!dataPoint || !param.panePrices || param.panePrices.length === 0) {
+            return;
+        }
+
+        const price = param.panePrices[0];
+        const time = dataPoint.time;
+        const currentDatasetId = activeDataset?.id;
+        if (!currentDatasetId) return;
+
+        // --- Handle Point Markers ---
+        if (currentMode === 'BUY' || currentMode === 'SELL' || currentMode === 'HOLD') {
+            const newMarker: LabelMarker = currentMode === 'BUY'
+                ? { time, position: 'belowBar', color: '#22c55e', shape: 'arrowUp', text: 'Buy' }
+                : currentMode === 'SELL'
+                ? { time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' }
+                : { time, position: 'belowBar', color: '#6b7280', shape: 'circle', size: 0.5, text: 'Hold' };
+
+            setLabeledPoints(prev => {
+                const currentPoints = prev[currentDatasetId] || [];
+                const otherPoints = currentPoints.filter(p => p.time !== time);
+                const newPoints = [...otherPoints, newMarker];
+                newPoints.sort((a, b) => (a.time as number) - (b.time as number));
+                return { ...prev, [currentDatasetId]: newPoints };
+            });
+            
+            toggleLabelMode(currentMode); // Toggle off after placing
+        }
+        // --- Handle Line Markers ---
+        else if (currentMode === 'BOS' || currentMode === 'CHOCH') {
+            const lineOptions: CustomPriceLineOptions = {
+                price,
+                color: currentMode === 'BOS' ? '#3b82f6' : '#f97316',
+                lineWidth: 2,
+                lineStyle: 2, // Dashed
+                axisLabelVisible: true,
+                title: `${currentMode}-${(Math.random() * 1000).toFixed(0)}`,
+                annotationType: currentMode,
+                time, // Store context, not used for drawing
+            };
+
+            setPriceLines(prev => ({
+                ...prev,
+                [currentDatasetId]: [...(prev[currentDatasetId] || []), lineOptions]
+            }));
+
+            toggleLabelMode(currentMode); // Toggle off
+        }
+        // --- Handle FVG Area ---
+        else if (currentMode === 'FVG') {
+            const localSeries = seriesApiRef.current;
+            if (!localSeries) return;
+
+            if (!fvgFirstClickRef.current) {
+                fvgFirstClickRef.current = { price, time };
+                if (fvgTempLineRef.current) {
+                    localSeries.removePriceLine(fvgTempLineRef.current);
+                }
+                const tempLine = localSeries.createPriceLine({ price, color: '#8b5cf6', lineWidth: 2, lineStyle: 3, axisLabelVisible: true, title: 'FVG Start' });
+                fvgTempLineRef.current = tempLine;
+            } else {
+                const top = Math.max(fvgFirstClickRef.current.price, price);
+                const bottom = Math.min(fvgFirstClickRef.current.price, price);
+                const fvgLineOptions: CustomPriceLineOptions = {
+                    price: top,
+                    price2: bottom,
+                    color: 'rgba(139, 92, 246, 0.2)',
+                    lineWidth: 1,
+                    lineStyle: 0,
+                    axisLabelVisible: false,
+                    title: `FVG-${(Math.random() * 1000).toFixed(0)}`,
+                    annotationType: 'FVG',
+                    time: fvgFirstClickRef.current.time,
+                };
+                
+                setPriceLines(prev => ({
+                    ...prev,
+                    [currentDatasetId]: [...(prev[currentDatasetId] || []), fvgLineOptions]
+                }));
+
+                // Cleanup
+                if (fvgTempLineRef.current) {
+                    localSeries.removePriceLine(fvgTempLineRef.current);
+                }
+                fvgTempLineRef.current = null;
+                fvgFirstClickRef.current = null;
+                toggleLabelMode(currentMode); // Toggle off
+            }
+        }
+    };
+    
     chart.subscribeClick(handleChartClick);
+    chart.subscribeCrosshairMove(handleCrosshairMove);
 
     const handleResize = () => chart.applyOptions({ width: chartContainerRef.current?.clientWidth });
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      chart.unsubscribeCrosshairMove(handleCrosshairMove);
       chart.unsubscribeClick(handleChartClick);
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
       chart.remove();
       chartApiRef.current = null;
       seriesApiRef.current = null;
     };
-  }, [theme, handleChartClick, handleCrosshairMove]);
+  }, [theme, activeDataset]); // Re-create chart only on theme or dataset change (to get new activeDataset ID in closure)
 
   // Effect to update chart DATA when active dataset changes
   useEffect(() => {
@@ -551,8 +541,7 @@ export default function DatasetsPage() {
         
         currentLineOptions.forEach(options => {
             if (options.annotationType === 'FVG' && options.price2 !== undefined) {
-                // This is a special case for FVG which requires two lines and a fill
-                const topLine = series.createPriceLine({
+                 const topLine = series.createPriceLine({
                     price: options.price, color: '#8b5cf6', lineWidth: 1,
                     lineStyle: 2, axisLabelVisible: true, title: "FVG High",
                 });
@@ -560,8 +549,8 @@ export default function DatasetsPage() {
                     price: options.price2, color: '#8b5cf6', lineWidth: 1,
                     lineStyle: 2, axisLabelVisible: true, title: "FVG Low",
                 });
-                // Note: Lightweight Charts doesn't directly support filled areas between two price lines.
-                // This visualization uses two lines as boundaries. A more complex visualization would require plugins or overlays.
+                 // To simulate a fill, we'd need a more complex approach.
+                 // For now, two lines represent the boundaries.
                 priceLineRefs.current.set(`${options.title}-top`, topLine);
                 priceLineRefs.current.set(`${options.title}-bottom`, bottomLine);
 
@@ -743,13 +732,14 @@ export default function DatasetsPage() {
                 </CardDescription>
                 </CardHeader>
                 <CardContent>
-                {activeDataset && (parsedData[activeDataset.id] || []).length > 0 ? (
-                    <div ref={chartContainerRef} className="w-full h-[500px]" />
-                ) : (
-                    <div className="flex items-center justify-center h-[500px] text-center text-muted-foreground border-2 border-dashed rounded-lg">
-                        <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
+                    <div ref={chartContainerRef} className={cn(
+                        "w-full h-[500px]",
+                        !activeDataset && "flex items-center justify-center text-center text-muted-foreground border-2 border-dashed rounded-lg"
+                    )}>
+                        {!activeDataset && (
+                             <p>Vui lòng chọn một bộ dữ liệu <br/> có thể gán nhãn (Thô hoặc Đã gán nhãn).</p>
+                        )}
                     </div>
-                )}
                 </CardContent>
                 <CardFooter className="flex-col items-stretch gap-4">
                      <div className="flex items-center justify-center gap-4 h-6">
@@ -800,5 +790,3 @@ export default function DatasetsPage() {
     </Tabs>
   );
 }
-
-    
