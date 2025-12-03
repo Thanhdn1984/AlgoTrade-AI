@@ -59,12 +59,18 @@ import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+// --- Data Types ---
+type ChartDataPoint = { time: string; value: number };
+type ParsedData = { [key: string]: ChartDataPoint[] };
+
+
 // --- Components for Upload ---
 
 type UploadState = {
   status: 'idle' | 'success' | 'error';
   message: string;
   newDataset?: Dataset | null;
+  fileContent?: string | null;
 }
 
 const initialState: UploadState = { status: 'idle', message: '' };
@@ -86,10 +92,35 @@ function UploadButton() {
   );
 }
 
-function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset) => void }) {
+function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset, parsedData: ChartDataPoint[]) => void }) {
   const [state, formAction] = useActionState(uploadFileAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Parse CSV content into chart data
+  const parseCSV = (content: string): ChartDataPoint[] => {
+    const rows = content.split('\n').filter(row => row.trim() !== '');
+    const headers = rows.shift()?.split(',').map(h => h.trim()) || [];
+    const closeIndex = headers.findIndex(h => h.toLowerCase() === 'close');
+    const timeIndex = headers.findIndex(h => h.toLowerCase() === 'time' || h.toLowerCase() === 'date');
+
+    if (closeIndex === -1 || timeIndex === -1) {
+        toast({
+            variant: 'destructive',
+            title: 'Lỗi Phân tích CSV',
+            description: 'Không tìm thấy cột "Close" và "Time/Date" trong tệp.',
+        });
+        return [];
+    }
+
+    return rows.map((row, index) => {
+        const values = row.split(',');
+        const value = parseFloat(values[closeIndex]);
+        const time = values[timeIndex] || `Điểm ${index + 1}`;
+        return { time, value };
+    }).filter(point => !isNaN(point.value));
+  };
+
 
   useEffect(() => {
     if (state.status === 'success' && state.message) {
@@ -97,8 +128,11 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Dataset
         title: 'Thành công!',
         description: state.message,
       });
-      if (state.newDataset) {
-        onUploadSuccess(state.newDataset);
+      if (state.newDataset && state.fileContent) {
+        const parsedData = parseCSV(state.fileContent);
+        if (parsedData.length > 0) {
+            onUploadSuccess(state.newDataset, parsedData);
+        }
       }
       formRef.current?.reset();
     } else if (state.status === 'error' && state.message) {
@@ -161,7 +195,7 @@ const initialDatasets: Dataset[] = [
 ];
 
 // Dữ liệu giả cho biểu đồ, mỗi key tương ứng với một id bộ dữ liệu
-const mockChartData: { [key: string]: { time: string, value: number }[] } = {
+const initialChartData: ParsedData = {
   "ds-001": Array.from({ length: 50 }, (_, i) => ({ time: `14:${i < 10 ? '0' : ''}${i}`, value: 150 + Math.sin(i * 0.5) * 10 + Math.random() * 5 })),
   "ds-004": Array.from({ length: 30 }, (_, i) => ({ time: `Day ${i+1}`, value: 9800 - i * 20 + Math.random() * 50 })),
 };
@@ -180,24 +214,24 @@ const chartConfig = {
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
+  const [parsedData, setParsedData] = useState<ParsedData>(initialChartData);
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const handleAddDataset = (newDataset: Dataset) => {
+  const handleAddDataset = (newDataset: Dataset, newParsedData: ChartDataPoint[]) => {
     setDatasets(prev => {
-      // Prevent adding duplicate datasets
       if (prev.find(d => d.id === newDataset.id)) {
         return prev;
       }
       return [...prev, newDataset];
     });
-    // Generate mock data for the new dataset
-    if (!mockChartData[newDataset.id]) {
-      mockChartData[newDataset.id] = Array.from({ length: 100 }, (_, i) => ({ time: `T${i}`, value: Math.floor(Math.random() * (2000 - 1800 + 1)) + 1800 }));
-    }
+    setParsedData(prev => ({
+        ...prev,
+        [newDataset.id]: newParsedData,
+    }));
   };
 
-  const currentChartData = activeDataset ? mockChartData[activeDataset.id] || [] : [];
+  const currentChartData = activeDataset ? parsedData[activeDataset.id] || [] : [];
   const currentDataPoint = currentChartData[currentIndex];
 
   const handleSetDataset = (dataset: Dataset) => {
@@ -208,7 +242,7 @@ export default function DatasetsPage() {
   }
 
   const handleNext = () => {
-    if (activeDataset && currentIndex < (mockChartData[activeDataset.id]?.length || 0) - 1) {
+    if (activeDataset && currentIndex < (parsedData[activeDataset.id]?.length || 0) - 1) {
       setCurrentIndex(currentIndex + 1);
     }
   };

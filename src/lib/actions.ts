@@ -90,6 +90,7 @@ type UploadState = {
     status: 'idle' | 'success' | 'error';
     message: string;
     newDataset?: Dataset | null;
+    fileContent?: string | null;
 }
 
 export async function uploadFileAction(prevState: UploadState, formData: FormData): Promise<UploadState> {
@@ -104,18 +105,21 @@ export async function uploadFileAction(prevState: UploadState, formData: FormDat
             }
         }
         
-        // Trong một ứng dụng thực tế, bạn sẽ xử lý việc lưu tệp vào Cloud Storage ở đây.
-        // Đối với mục đích demo, chúng tôi chỉ mô phỏng sự thành công.
+        // Read file content
+        const fileContent = await file.text();
+
+        // In a real app, you would save the file to cloud storage.
+        // For demo purposes, we pass the content back to the client.
         console.log(`Đang "tải lên" tệp: ${file.name}, kích thước: ${file.size} bytes`);
         
         // Giả lập độ trễ mạng
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         const newDataset: Dataset = {
             id: `ds-${Date.now()}`,
             name: file.name.replace('.csv', ''),
             status: 'Raw',
-            itemCount: Math.floor(file.size / 50), // Ước tính số dòng
+            itemCount: fileContent.split('\n').length -1, // Estimate row count
             createdAt: new Date().toISOString().split('T')[0],
         };
 
@@ -125,6 +129,7 @@ export async function uploadFileAction(prevState: UploadState, formData: FormDat
             status: 'success',
             message: `Tệp "${file.name}" đã được tải lên thành công.`,
             newDataset: newDataset,
+            fileContent: fileContent,
         }
 
     } catch (error) {
