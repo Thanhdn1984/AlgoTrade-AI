@@ -29,7 +29,8 @@ import {
   ArrowDown,
   LineChart as LineChartIcon,
   Ruler,
-  Cpu
+  Cpu,
+  Wand2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -48,50 +49,50 @@ import {
 import type { Dataset, CandlestickChartData, AnnotationType, LabeledPoint } from "@/lib/types";
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { useActionState } from 'react';
-import { uploadFileAction, trainModelAction } from "@/lib/actions";
+import { uploadFileAction, trainModelAction, autoLabelAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, type MouseEventParams, CrosshairMode, type SeriesMarker } from 'lightweight-charts';
 import { useTheme } from "next-themes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useFormStatus } from 'react-dom';
 
-// --- Mock Data ---
-const initialDatasets: Dataset[] = [
-  {
-    id: "ds-001",
-    name: "EURUSD_H1_2023_Sample",
-    status: "Labeled",
-    itemCount: 1500,
-    createdAt: "2024-05-20",
-  },
-  {
-    id: "ds-002",
-    name: "BTCUSD_M5_2024_Q1",
-    status: "Raw",
-    itemCount: 25000,
-    createdAt: "2024-05-18",
-  },
-   {
-    id: "ds-003",
-    name: "NASDAQ_Futures_H4",
-    status: "Processing",
-    itemCount: 800,
-    createdAt: "2024-05-15",
-  },
-];
 
-type ParsedData = { [key: string]: CandlestickChartData[] };
-
-const initialParsedData: ParsedData = {
-    "ds-001": Array.from({ length: 100 }, (_, i) => {
-        const time = (1704067200 + i * 3600) as UTCTimestamp; // Jan 1 2024 + i hours
-        const open = 1.0800 + Math.random() * 0.001 - 0.0005;
-        const high = open + Math.random() * 0.001;
-        const low = open - Math.random() * 0.001;
-        const close = low + (high - low) * Math.random();
-        return { time, open, high, low, close, raw: '', index: i };
-    })
-};
+// --- Annotation Button Component ---
+const AnnotationButton = ({ mode, children, tooltip, activeButton, activeDataset, toggleLabelMode }: { 
+    mode: AnnotationType, 
+    children: React.ReactNode, 
+    tooltip: string,
+    activeButton: AnnotationType | null,
+    activeDataset: Dataset | null,
+    toggleLabelMode: (mode: AnnotationType) => void
+}) => (
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant={activeButton === mode ? 'default' : 'outline'}
+          size="lg"
+          className={cn(
+            "h-12 w-20 flex-col",
+            activeButton === mode &&
+              (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
+              mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
+              mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
+              'border-primary ring-2 ring-primary')
+          )}
+          disabled={!activeDataset}
+          onClick={() => toggleLabelMode(mode)}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
 
 
 // --- Components for Upload ---
@@ -106,26 +107,48 @@ type UploadState = {
 const initialUploadState: UploadState = { status: 'idle', message: '' };
 
 function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Dataset, 'id'>, parsedData: CandlestickChartData[]) => void }) {
-    const [state, formAction, isPending] = useActionState(uploadFileAction, initialUploadState);
+    
+    function UploadButton() {
+        const { pending } = useFormStatus();
+        return (
+          <Button type="submit" className="w-full" variant="outline" disabled={pending}>
+            {pending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
+              </>
+            ) : (
+              <>
+                <FileUp className="mr-2 h-4 w-4" /> Tải lên
+              </>
+            )}
+          </Button>
+        );
+    }
+    
+    const [state, formAction] = useActionState(uploadFileAction, initialUploadState);
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
+    const stateRef = useRef(state);
 
     useEffect(() => {
-        if (state.status === 'idle') return;
-
-        if (state.status === 'success' && state.newDataset && state.parsedData) {
-            toast({
-                title: 'Thành công!',
-                description: state.message,
-            });
-            onUploadSuccess(state.newDataset, state.parsedData);
-            formRef.current?.reset();
-        } else if (state.status === 'error') {
-            toast({
-                variant: 'destructive',
-                title: 'Lỗi',
-                description: state.message,
-            });
+        // We use a ref to prevent the toast from showing up on every render.
+        // This is a common pattern with useActionState.
+        if (state.status !== 'idle' && state.message !== stateRef.current.message) {
+             if (state.status === 'success' && state.newDataset && state.parsedData) {
+                toast({
+                    title: 'Thành công!',
+                    description: state.message,
+                });
+                onUploadSuccess(state.newDataset, state.parsedData);
+                formRef.current?.reset();
+            } else if (state.status === 'error') {
+                toast({
+                    variant: 'destructive',
+                    title: 'Lỗi',
+                    description: state.message,
+                });
+            }
+            stateRef.current = state;
         }
     }, [state, toast, onUploadSuccess]);
 
@@ -145,22 +168,12 @@ function UploadCard({ onUploadSuccess }: { onUploadSuccess: (newDataset: Omit<Da
             </div>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" variant="outline" disabled={isPending}>
-              {isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải lên...
-                </>
-              ) : (
-                <>
-                  <FileUp className="mr-2 h-4 w-4" /> Tải lên
-                </>
-              )}
-            </Button>
+            <UploadButton />
           </CardFooter>
         </form>
       </Card>
     );
-  }
+}
 
 
 // --- Training Component ---
@@ -177,36 +190,34 @@ function TrainModelCard({ activeDataset, labeledPoints }: {
 }) {
     const [state, formAction, isPending] = useActionState(trainModelAction, initialTrainState);
     const { toast } = useToast();
+    const stateRef = useRef(state);
 
     useEffect(() => {
-        if (state.status === 'idle') return;
-
-        if (state.status === 'success') {
-            toast({ title: 'Thành công', description: state.message });
-        } else if (state.status === 'error') {
-            toast({ variant: 'destructive', title: 'Lỗi', description: state.message });
+        if (state.status !== 'idle' && state.message !== stateRef.current.message) {
+            if (state.status === 'success') {
+                toast({ title: 'Thành công', description: state.message });
+            } else if (state.status === 'error') {
+                toast({ variant: 'destructive', title: 'Lỗi', description: state.message });
+            }
+            stateRef.current = state;
         }
     }, [state, toast]);
     
-    const handleTrain = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        const formData = new FormData(event.currentTarget);
-        
-        // Convert labeled points to CSV
-        const labeledData = [
-            'type,time,price,text', // header
-            ...labeledPoints.map(p => `POINT,${p.time},${p.position === 'aboveBar' ? 'high' : 'low'},${p.text}`),
-        ].join('\n');
-
-        formData.append('labeledDataCSV', labeledData);
-        
-        formAction(formData);
-    };
+    // Convert labeled points to CSV for the hidden input
+    const labeledDataCSV = [
+        'type,time,price,text', // header - price is not really used now but might be useful
+        ...labeledPoints.map(p => {
+             // In a real app you'd get the price from the chart data at that time
+            const price = 0; 
+            return `POINT,${p.time},${price},${p.text}`
+        }),
+    ].join('\n');
 
     return (
         <Card>
-             <form onSubmit={handleTrain}>
+             <form action={formAction}>
                 <input type="hidden" name="datasetId" value={activeDataset?.id || ''} />
+                <input type="hidden" name="labeledDataCSV" value={labeledDataCSV} />
                 <CardHeader>
                     <CardTitle className="font-headline">Huấn luyện Mô hình</CardTitle>
                     <CardDescription>Sử dụng dữ liệu đã gán nhãn để dạy cho AI.</CardDescription>
@@ -320,43 +331,6 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
 CandlestickChart.displayName = 'CandlestickChart';
 
 
-// --- Annotation Button Component ---
-const AnnotationButton = ({ mode, children, tooltip, activeButton, activeDataset, toggleLabelMode }: { 
-    mode: AnnotationType, 
-    children: React.ReactNode, 
-    tooltip: string,
-    activeButton: AnnotationType | null,
-    activeDataset: Dataset | null,
-    toggleLabelMode: (mode: AnnotationType) => void
-}) => (
-  <TooltipProvider>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant={activeButton === mode ? 'default' : 'outline'}
-          size="lg"
-          className={cn(
-            "h-12 w-20 flex-col",
-            activeButton === mode &&
-              (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
-              mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
-              mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
-              'border-primary ring-2 ring-primary')
-          )}
-          disabled={!activeDataset}
-          onClick={() => toggleLabelMode(mode)}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{tooltip}</p>
-      </TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
-);
-
-
 // --- Main Page Component ---
 const statusDisplay: { [key: string]: string } = {
   Labeled: "Đã gán nhãn",
@@ -365,29 +339,32 @@ const statusDisplay: { [key: string]: string } = {
 };
 
 export default function DatasetsPage() {
-  const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
-  const [parsedData, setParsedData] = useState<ParsedData>(initialParsedData);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [parsedData, setParsedData] = useState<ParsedData>({});
   const [activeDataset, setActiveDataset] = useState<Dataset | null>(null);
   const [labeledPoints, setLabeledPoints] = useState<LabeledPoint[]>([]);
   const [loadingDatasets, setLoadingDatasets] = useState(true);
+  const [isAutoLabeling, setIsAutoLabeling] = useState(false);
   
   // UI State
   const [hoveredDataPoint, setHoveredDataPoint] = useState<CandlestickChartData & { price?: number } | null>(null);
   const activeLabelModeRef = useRef<AnnotationType | null>(null);
   const [activeButton, setActiveButton] = useState<AnnotationType | null>(null);
   
+  const { toast } = useToast();
+  
   useEffect(() => {
     // Simulate loading
     setTimeout(() => setLoadingDatasets(false), 500);
   }, []);
 
-  const handleAddDataset = (newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
-    const newId = `dataset-${Date.now()}`;
+  const handleAddDataset = useCallback((newDatasetData: Omit<Dataset, 'id'>, newParsedData: CandlestickChartData[]) => {
+    const newId = `ds-${Date.now()}`;
     const newDataset = { ...newDatasetData, id: newId };
     
     setDatasets(prev => [...prev, newDataset]);
     setParsedData(prev => ({ ...prev, [newId]: newParsedData }));
-  };
+  }, []);
 
 
   const handleDeleteDataset = (datasetId: string) => {
@@ -413,7 +390,7 @@ export default function DatasetsPage() {
 
     setActiveDataset(dataset);
     // Here you would typically fetch labeled points for this dataset.
-    // For this local version, we'll just reset it.
+    // For this demo, we'll just reset it.
     setLabeledPoints([]);
     setHoveredDataPoint(null);
   }
@@ -469,15 +446,60 @@ export default function DatasetsPage() {
       }
 
       if (newMarker) {
-         setLabeledPoints(prev => [...prev, { ...newMarker, id: `point-${Date.now()}` } as LabeledPoint]);
+         setLabeledPoints(prev => [...prev, { ...newMarker, id: `point-${Date.now()}` } as LabeledPoint].sort((a,b) => (a.time as number) - (b.time as number)));
       }
       
       activeLabelModeRef.current = null;
       setActiveButton(null);
   }, [activeDataset]);
+  
+  const handleAutoLabel = async (dataset: Dataset) => {
+    const data = parsedData[dataset.id];
+    if (!data) {
+        toast({
+            variant: 'destructive',
+            title: 'Lỗi',
+            description: 'Không tìm thấy dữ liệu cho bộ dữ liệu này.',
+        });
+        return;
+    }
+
+    setIsAutoLabeling(true);
+    toast({
+        title: 'Đang xử lý...',
+        description: 'AI đang phân tích dữ liệu. Việc này có thể mất một chút thời gian.',
+    });
+
+    const formData = new FormData();
+    formData.append('datasetId', dataset.id);
+    formData.append('rawData', data.map(d => d.raw).join('\n'));
+
+    const result = await autoLabelAction({ status: 'idle' }, formData);
+
+    if (result.status === 'success' && result.labeledPoints) {
+        // Set as active dataset if not already
+        if (activeDataset?.id !== dataset.id) {
+            handleSetDataset(dataset);
+        }
+        setLabeledPoints(prev => [...prev, ...result.labeledPoints!].sort((a, b) => (a.time as number) - (b.time as number)));
+        toast({
+            title: 'Thành công!',
+            description: `AI đã tự động thêm ${result.labeledPoints.length} nhãn mới.`,
+        });
+    } else {
+        toast({
+            variant: 'destructive',
+            title: 'Lỗi gán nhãn tự động',
+            description: result.message,
+        });
+    }
+    setIsAutoLabeling(false);
+  };
+
 
   const getHelperText = () => {
     if (!activeDataset) return 'Di chuyển chuột trên biểu đồ để xem chi tiết.';
+    if (isAutoLabeling) return 'AI đang phân tích...';
     const currentMode = activeButton;
     if (currentMode) {
       return `Chế độ ${currentMode}: Nhấp vào biểu đồ để đặt nhãn.`;
@@ -555,7 +577,7 @@ export default function DatasetsPage() {
                             className={cn(
                                 "cursor-pointer",
                                 activeDataset?.id === dataset.id && "bg-muted/50",
-                                dataset.status === "Processing" && "cursor-not-allowed opacity-50"
+                                (dataset.status === "Processing" || isAutoLabeling) && "cursor-not-allowed opacity-50"
                             )}
                           >
                             <TableCell className="font-medium">
@@ -587,6 +609,7 @@ export default function DatasetsPage() {
                                     aria-haspopup="true"
                                     size="icon"
                                     variant="ghost"
+                                    disabled={isAutoLabeling}
                                   >
                                     <MoreHorizontal className="h-4 w-4" />
                                     <span className="sr-only">Mở menu</span>
@@ -595,7 +618,16 @@ export default function DatasetsPage() {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuLabel>Hành động</DropdownMenuLabel>
                                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleSetDataset(dataset); }}>Gán nhãn</DropdownMenuItem>
-                                  <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
+                                   <DropdownMenuItem 
+                                    onSelect={(e) => { e.preventDefault(); handleAutoLabel(dataset); }}
+                                    disabled={isAutoLabeling}
+                                   >
+                                    {isAutoLabeling ? (
+                                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang xử lý...</>
+                                    ): (
+                                        <><Wand2 className="mr-2 h-4 w-4" /> Gán nhãn tự động</>
+                                    )}
+                                   </DropdownMenuItem>
                                   <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
@@ -674,11 +706,11 @@ export default function DatasetsPage() {
                          <AnnotationButton mode="BOS" tooltip="Phá vỡ cấu trúc (Break of Structure)" {...{activeButton, activeDataset, toggleLabelMode}}>
                             <LineChartIcon className="h-5 w-5" />
                             <span className="text-xs">BOS</span>
-                        </AnnotationButton>
+                        </Button>
                          <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)" {...{activeButton, activeDataset, toggleLabelMode}}>
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
-                        </AnnotationButton>
+                        </Button>
                     </div>
                 </CardFooter>
             </Card>

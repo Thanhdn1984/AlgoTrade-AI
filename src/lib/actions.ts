@@ -2,6 +2,7 @@
 
 import {generateTradeSignals} from '@/ai/flows/generate-trade-signals';
 import {labelTrainingData} from '@/ai/flows/label-training-data';
+import {autoLabelData} from '@/ai/flows/auto-label-data';
 import {z} from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Dataset, CandlestickChartData, LabeledPoint } from './types';
@@ -255,6 +256,60 @@ export async function trainModelAction(prevState: TrainModelState, formData: For
         return {
             status: 'error',
             message: error.message || "Không thể bắt đầu huấn luyện mô hình.",
+        };
+    }
+}
+
+
+// --- Action for Auto Labeling ---
+const autoLabelSchema = z.object({
+    datasetId: z.string(),
+    rawData: z.string(),
+});
+
+type AutoLabelState = {
+    status: 'idle' | 'success' | 'error';
+    message?: string;
+    labeledPoints?: LabeledPoint[] | null;
+};
+
+
+export async function autoLabelAction(prevState: AutoLabelState, formData: FormData): Promise<AutoLabelState> {
+     try {
+        const validatedFields = autoLabelSchema.safeParse({
+            datasetId: formData.get('datasetId'),
+            rawData: formData.get('rawData'),
+        });
+
+        if (!validatedFields.success) {
+             return {
+                status: 'error',
+                message: "Dữ liệu đầu vào cho gán nhãn tự động không hợp lệ.",
+            };
+        }
+        
+        const result = await autoLabelData({
+            rawData: validatedFields.data.rawData,
+        });
+
+        if (result && result.labeledPoints) {
+            return {
+                status: 'success',
+                message: 'Gán nhãn tự động thành công.',
+                labeledPoints: result.labeledPoints as LabeledPoint[],
+            };
+        } else {
+             return {
+                status: 'error',
+                message: 'AI không trả về kết quả hợp lệ.',
+            };
+        }
+
+    } catch (error: any) {
+        console.error("Lỗi khi gán nhãn tự động:", error);
+        return {
+            status: 'error',
+            message: error.message || "Không thể tự động gán nhãn dữ liệu.",
         };
     }
 }
