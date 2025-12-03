@@ -279,7 +279,7 @@ const CandlestickChart = memo(({ data, markers, onChartClick, onCrosshairMove }:
             chart.remove();
             chartApiRef.current = null;
         };
-    }, [theme, onChartClick, onCrosshairMove]); 
+    }, [theme]); 
 
     useEffect(() => {
         if (chartApiRef.current?.series) {
@@ -438,33 +438,35 @@ export default function DatasetsPage() {
     }));
   }, [labeledPoints]);
 
-  const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={activeButton === mode ? 'default' : 'outline'}
-            size="lg"
-            className={cn(
-              "h-12 w-20 flex-col",
-               activeButton === mode &&
-                (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
-                 mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
-                 mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
-                 'border-primary ring-2 ring-primary')
-            )}
-            disabled={!activeDataset}
-            onClick={() => toggleLabelMode(mode)}
-          >
-            {children}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  const AnnotationButton = ({ mode, children, tooltip }: { mode: AnnotationType, children: React.ReactNode, tooltip: string }) => {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={activeButton === mode ? 'default' : 'outline'}
+              size="lg"
+              className={cn(
+                "h-12 w-20 flex-col",
+                activeButton === mode &&
+                  (mode === 'BUY' ? 'border-green-500 ring-2 ring-green-500' :
+                  mode === 'SELL' ? 'border-red-500 ring-2 ring-red-500' :
+                  mode === 'HOLD' ? 'border-gray-500 ring-2 ring-gray-500' :
+                  'border-primary ring-2 ring-primary')
+              )}
+              disabled={!activeDataset}
+              onClick={() => toggleLabelMode(mode)}
+            >
+              {children}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltip}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
 
 
   return (
@@ -651,7 +653,7 @@ export default function DatasetsPage() {
                          <AnnotationButton mode="CHOCH" tooltip="Thay đổi tính chất (Change of Character)">
                            <Ruler className="h-5 w-5" />
                             <span className="text-xs">CHOCH</span>
-                        </Button>
+                        </AnnotationButton>
                     </div>
                 </CardFooter>
             </Card>
