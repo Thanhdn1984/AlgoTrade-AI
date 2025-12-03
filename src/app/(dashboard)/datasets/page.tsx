@@ -217,7 +217,7 @@ export default function DatasetsPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Hành động</DropdownMenuLabel>
-                              <DropdownMenuItem>Gán nhãn</DropdownMenuItem>
+                              <DropdownMenuItem>Gán nhãn tự động</DropdownMenuItem>
                               <DropdownMenuItem>Xem chi tiết</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive">
