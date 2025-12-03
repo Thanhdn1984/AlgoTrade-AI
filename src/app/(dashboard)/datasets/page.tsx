@@ -50,8 +50,8 @@ import {
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import type { Dataset } from "@/lib/types";
-import { useEffect, useRef, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useEffect, useRef, useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { uploadFileAction } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 
@@ -146,7 +146,7 @@ function UploadButton() {
 }
 
 function UploadCard() {
-  const [state, formAction] = useFormState(uploadFileAction, { status: 'idle' as const, message: '' });
+  const [state, formAction] = useActionState(uploadFileAction, { status: 'idle' as const, message: '' });
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
