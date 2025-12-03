@@ -33,9 +33,7 @@ export default function RootLayout({
           fontHeadline.variable
         )}
       >
-        <ClientProviders>
-          {children}
-        </ClientProviders>
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   );
