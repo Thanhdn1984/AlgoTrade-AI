@@ -2,6 +2,7 @@
   "name": "nextn",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/dist/main.js",
   "scripts": {
     "dev": "next dev --turbopack -p 9002",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
@@ -9,7 +10,11 @@
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"npm run electron:watch\"",
+    "electron:watch": "tsc -p electron -w",
+    "electron:start": "electron .",
+    "electron:build": "npm run build && tsc -p electron && electron-builder"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.20.0",
@@ -61,9 +66,35 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^31.2.1",
+    "electron-builder": "^24.13.3",
     "genkit-cli": "^1.20.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.example.nextron",
+    "productName": "AlgoTrade AI",
+    "copyright": "Copyright © 2024 ${author}",
+    "mac": {
+      "category": "public.app-category.finance"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "directories": {
+      "output": "electron/dist-bundle"
+    },
+    "files": [
+      "electron/dist/**/*",
+      "out/**/*"
+    ],
+    "extends": null
   }
 }
